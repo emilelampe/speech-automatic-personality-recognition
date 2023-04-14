@@ -17,9 +17,9 @@ The project is build so that it supports multiprocessing on a HPC controlled by 
 The project is built with the following naming conventions:
 
 ```
-dataset:	{name}-{featureset}-{binary_threshold_type}.pkl
+dataset:    {name}-{featureset}-{binary_threshold_type}.pkl
 result dir: YYMMDD_hhmm_{batch_id}
-log file: YYMMDD_hhmm_{batch_id}.log
+log file:   YYMMDD_hhmm_{batch_id}.log
 ```
 
 Columns with metadata should be placed first, then the labels, and then the features.
