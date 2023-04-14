@@ -14,28 +14,46 @@ The project is build so that it supports multiprocessing on a HPC controlled by 
 
 ### Conventions
 
-The model is bul:
+The project is built with the following naming conventions:
 
 ```
 dataset:	{name}-{featureset}-{binary_threshold_type}.pkl
+result dir: YYMMDD_hhmm_{batch_id}
+log file: YYMMDD_hhmm_{batch_id}.log
 ```
 
-The features should have at least the following
+Columns with metadata should be placed first, then the labels, and then the features.
+The following is an example:
+
+| **ID**   | **Group**  | **Length** | **Label 1** | **Label 2** | **Feature 1** | **Feature 2** |
+|----------|------------|------------|-------------|-------------|---------------|---------------|
+| clip_001 | speaker_01 | 5204       | 1           | 0           | 0.6753        | 0.3563        |
+| clip_002 | speaker_02 | 1107       | 0           | 0           | 0.2476        | 0.1375        |
+| clip_003 | speaker_01 | 4593       | 1           | 0           | 0.4674        | 0.1378        |
 
 ## Structure
 
 The folder structure of the repository is as follows:
 
 ```
-bashCopy code.
-├── README.md
-├── db
-│   ├── full-nscc_normalized_bfi44-egemaps-median.pkl
-│   └── full-sspn-egemaps-average.pkl
+speech-automatic-personalty-recognition
+├── apr
+│   ├── functions.py
+│   └── multilabel_stratified_group_split.py
+├── config.py
+├── data
+│   ├── single_label_example_dataset.pkl
+│   └── spc-egemaps-average.pkl
 ├── log
-│   └── log-<datetime>.log
-├── best_result.csv
-└── train.py
+│   └── 230414_1155_8388.log
+├── README.md
+├── results
+│   ├── 230414_1155_8388
+│   │   ├── 8388-svm_rbf-Extraversion-best_result.csv
+│   │   ├── best_estimators
+│   │   └── cv_results
+└── run.py
+
 ```
 
 ## Requirements
@@ -91,25 +109,19 @@ To use the training script, follow these steps:
    python train.py
    ```
 
-### Customization
+### Config
+
+The config is divided in two parts:
+- Parameters for specific settings
+- A parameter grid for the grid search
 
 You can customize the training script by modifying the following parameters:
 
-- `db`: Path to the dataset
+- `db`: The name of the dataset file (in .pkl)
+- `t`: Target label to train and evaluate on
 - `begin_col_labels`: Column index where labels start
 - `begin_col_features`: Column index where features start
 - `sc` and `ec`: Minimum and maximum cutoff lengths for speech segments
-- `t`: Target personality trait for single-label classification
 - `scoring`: Scoring metric for model evaluation
 - `seed`: Random seed for reproducibility
-- `n_searches`: Number of GridSearch folds
-- `param_grid`: Parameter grid for hyperparameter tuning
-
-To modify any of these parameters, simply update their values in the `train.py` script before running it.
-
-For example, to change the target personality trait to 'Neuroticism', update the `t` parameter:
-
-```python
-pythonCopy code
-t = 'Neuroticism'
-```
+- `n_searches`: Number of grid search folds
