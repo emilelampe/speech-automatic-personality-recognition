@@ -1,0 +1,15 @@
+# ignore pycaches
+__pycache__
+
+# ignore log files except one example
+log/*
+!log/230414_1155_8388.log
+
+# ignore result folders except one example
+results/*
+!results/230414_1155_8388
+
+# ignore data except SPC and single labele example
+data/*
+!data/spc-egemaps-average.pkl
+!data/single_label_example_dataset.pkl
