@@ -70,7 +70,6 @@ To run the code, you need to have Python 3.7+ installed along with the following
 You can install these libraries using pip:
 
 ```python
-bashCopy code
 pip install matplotlib numpy pandas scikit-learn joblib ipyparallel
 ```
 
@@ -91,22 +90,34 @@ To use the training script, follow these steps:
 1. Clone this repository:
 
    ```python
-   bashCopy codegit clone https://github.com/user/repo.git
-   cd repo
+   git clone https://github.com/emilelampe/speech-automatic-personality-recognition.git
+   cd speech-automatic-personality-recognition
    ```
 
-2. Update the dataset paths in the `train.py` script to match your local paths:
+2. Update the dataset paths in the `config.py` script to match your local paths:
 
    ```python
-   pythonCopy code
    db = "path/to/your/dataset.pkl"
    ```
 
-3. Run the training script:
+3. If running locally:
+
+   1. With IPython Parallel, start the engines and, after receiving a message they have successfully been start up, execute `run.py`
+
+      ```
+      ipcluster start --profile=ipy_profile &
+      
+      # wait for message for successfull start of the engines
+      
+      python run.py
+      ```
+
+   2. Without IPython Parallel, u
+
+4. If running on the HPC, run the .sh file with the right settings.
 
    ```python
-   bashCopy code
-   python train.py
+   # code to come
    ```
 
 ### Config

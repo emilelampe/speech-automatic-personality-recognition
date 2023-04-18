@@ -13,3 +13,6 @@ results/*
 data/*
 !data/spc-egemaps-average.pkl
 !data/single_label_example_dataset.pkl
+
+# Ignore test notebook
+test.ipynb
