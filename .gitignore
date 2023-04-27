@@ -11,9 +11,10 @@ results/*
 !main_results.csv
 
 # ignore data except SPC and single labele example
-data/*
+# data/*
 !data/spc-egemaps-average.pkl
 !data/single_label_example_dataset.pkl
+data/nsc-compare.pkl
 
 # Ignore notebooks
 ipynb

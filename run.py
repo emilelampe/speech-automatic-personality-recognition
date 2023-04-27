@@ -4,7 +4,6 @@ from datetime import datetime
 import configs.config as config
 import configs.arguments_config as arguments_config
 from apr.functions import *
-# import apr.multilabel_stratified_group_split as msgs
 import logging
 import os
 import sys
@@ -61,16 +60,17 @@ clf_rfecv = config.clf_rfecv
 step_rfecv = config.step_rfecv
 cal_method = config.cal_method
 
-# combine model and preprocessing parameters into one parameter grid
-model_pars[m].update(pre_pars)
-param_grid = model_pars[m]
-
 # --- ARGUMENTS SETTINGS ---
 
 FILE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(FILE_DIR)
 
+# Default random value for batch
 random_id = randint(1, 10000)
+
+# Default current time for timestamp
+starttime = time.time()
+timestamp = datetime.now().strftime("%y%m%d_%H%M")
 
 # prepare the logger
 parser = argparse.ArgumentParser()
@@ -90,6 +90,8 @@ parser.add_argument("-s", "--startcutoff", default=str(sc),
                     help="The minimum length of a sample")
 parser.add_argument("-e", "--endcutoff", default=str(ec),
                     help="The maximum length of a sample")
+parser.add_argument("--timestamp", default=timestamp,
+                    help="Timestamp in format YYMMDD_hhmm, used for logging batches")
 
 # Overwrite config values with argument values
 args = parser.parse_args()
@@ -104,6 +106,7 @@ sc = args.startcutoff
 ec = args.endcutoff
 sc = float(sc)
 ec = float(ec)
+timestamp = timestamp
 
 # Import custom arguments config
 trait_dict = arguments_config.trait_dict
@@ -119,15 +122,16 @@ if f.lower() in feat_dict.keys():
 if db.lower() in database_dict.keys():
     db = database_dict[db.lower()]
 
-# --- SETUP MULTIPROCESSING, LOGGING AND PATHS ---
+# combine model and preprocessing parameters into one parameter grid
+model_pars[m].update(pre_pars)
+param_grid = model_pars[m]
 
-starttime = time.time()
-datetime_start = datetime.now().strftime("%y%m%d_%H%M")
+# --- SETUP MULTIPROCESSING, LOGGING AND PATHS ---
 
 file_prefix = f"{b}-{m}-{t}-"
 
 logfilename = os.path.join(
-    FILE_DIR, f'log/{datetime_start}_{b}.log')
+    FILE_DIR, f'log/{timestamp}_{b}.log')
 logging.basicConfig(filename=logfilename,
                     filemode='w',
                     level=logging.DEBUG)
@@ -137,7 +141,7 @@ logging.info("Batch: %s" % b)
 logging.info("FILE_DIR: %s" % FILE_DIR)
 
 # check whether the batchid folder exists
-batch_path = f"{FILE_DIR}/results/{datetime_start}_{b}"
+batch_path = f"{FILE_DIR}/results/{timestamp}_{b}"
 isExist = os.path.exists(batch_path)
 # if it doesn't exist, create new folder
 if not isExist:
@@ -351,7 +355,7 @@ print_save(f"Confusion matrix:\n{confusion_matrix(y_test, y_preds_calibrated)}")
 
 db_name = db.split("-")[0]
 # create the string to add to the main results file
-main_results_string = [datetime_start,b,db_name,sc,ec,f,m,t,auc_roc,bal_acc, acc, brier_score]
+main_results_string = [timestamp,b,db_name,sc,ec,f,m,t,auc_roc,bal_acc, acc, brier_score]
 for i, x in enumerate(best_estimator_):
     if i == 1:
         if str(x) != 'passthrough':

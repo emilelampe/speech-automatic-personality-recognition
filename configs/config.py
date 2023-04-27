@@ -48,7 +48,7 @@ m = 'rf'
 t = 'Extraversion'
 
 # minimum and maximum length cutoff in seconds ('Length' column needed)
-sc = 7.5
+sc = 0
 ec = 0
 
 # scoring metric
@@ -92,8 +92,8 @@ max_depth_range.append(None)
 # Preprocessing parameters
 pre_pars = {
         'scaler': [StandardScaler()],
-        'pca': [PCA(0.95)],
-        # 'pca': ['passthrough'],
+        # 'pca': [PCA(0.95), PCA(0.99), 'passthrough'],
+        'pca': ['passthrough']
     }
 
 # Model parameters
