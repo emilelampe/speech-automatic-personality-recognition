@@ -1,6 +1,1 @@
 datetime;batchid;database;sc;ec;feature_set;model;trait; auc_roc;bal_acc;acc;brier;scaling;pca;n_feat_sel;clf;calibration
-230427_1136;1978;spc;7.5;0.0;egemaps;svm_rbf;Agreeableness;0.644;0.598;0.569;0.24;StandardScaler();0.95, 36;28;RandomForestClassifier(max_depth=1, n_jobs=1, random_state=42);isotonic
-230427_1137;8197;spc;7.5;0.0;egemaps;svm_rbf;Agreeableness;0.678;0.585;0.634;0.218;StandardScaler();0.95, 36;28;RandomForestClassifier(max_depth=1, n_jobs=1, random_state=42);sigmoid
-230427_1540;3241;spc;0.0;0.0;egemaps;rf;Extraversion;0.854;0.779;0.78;0.153;StandardScaler();passthrough;66;RandomForestClassifier(max_depth=4, n_estimators=500, n_jobs=1, random_state=42);sigmoid
-230427_1543;5061;spc;0.0;0.0;egemaps;svm_rbf;Extraversion;0.851;0.762;0.764;0.158;StandardScaler();passthrough;66;SVC(C=1, gamma=0.01, probability=True, random_state=42);sigmoid
-230427_1552;1917;spc;0.0;0.0;egemaps;svm_rbf;Extraversion;0.851;0.762;0.764;0.158;StandardScaler();passthrough;66;SVC(C=1, gamma=0.01, probability=True, random_state=42);sigmoid
