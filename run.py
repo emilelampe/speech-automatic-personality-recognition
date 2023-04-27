@@ -151,7 +151,7 @@ if not isExist:
 
 logging.info("Folders for batch checked or made")
 
-output_path = f"{batch_path}/outputs/{file_prefix}ouput.txt"
+output_path = f"{batch_path}/outputs/{file_prefix}output.txt"
 
 # Print to both terminala and output file
 def print_save(text):
