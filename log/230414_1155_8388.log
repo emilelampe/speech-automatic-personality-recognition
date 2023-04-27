@@ -1,9 +1,0 @@
-INFO:root:number of CPUs found: 12
-INFO:root:args.profile: ipy_profile
-INFO:root:Batch: 8388
-INFO:root:FILE_DIR: /home/emile/dev/speech-automatic-personality-recognition
-INFO:root:Folders for batch checked or made
-DEBUG:asyncio:Using selector: EpollSelector
-DEBUG:asyncio:Using selector: EpollSelector
-DEBUG:traitlets:Importing canning map
-INFO:root:c.ids :[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]

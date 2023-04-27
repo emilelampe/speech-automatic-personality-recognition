@@ -1,7 +1,10 @@
+import argparse
+import contextlib
 from datetime import datetime
-import config
-import apr.functions as functions
-import apr.multilabel_stratified_group_split as msgs
+import configs.config as config
+import configs.arguments_config as arguments_config
+from apr.functions import *
+# import apr.multilabel_stratified_group_split as msgs
 import logging
 import os
 import sys
@@ -24,6 +27,9 @@ import joblib
 from shutil import rmtree
 from tempfile import mkdtemp
 import random
+from random import randint
+import maestros.functions as mt
+from csv import writer
 
 # parallel processing imports
 sys.modules['sklearn.externals.joblib'] = joblib
@@ -37,6 +43,7 @@ from ipyparallel.joblib import IPythonParallelBackend
 # --- IMPORT CONFIG ---
 
 db = config.db
+f = config.f
 t = config.t
 m = config.m
 begin_col_labels = config.begin_col_labels
@@ -44,6 +51,8 @@ begin_col_features = config.begin_col_features
 sc = config.sc
 ec = config.ec
 scoring = config.scoring
+save_graphs = config.save_graphs
+save_model = config.save_model
 seed = config.seed
 n_searches = config.n_searches
 pre_pars = config.pre_pars
@@ -56,14 +65,61 @@ cal_method = config.cal_method
 model_pars[m].update(pre_pars)
 param_grid = model_pars[m]
 
-# --- SETUP MULTIPROCESSING, LOGGING AND PATHS ---
-
-b = random.randint(0, 10000)
-
-profile = "ipy_profile"
+# --- ARGUMENTS SETTINGS ---
 
 FILE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(FILE_DIR)
+
+random_id = randint(1, 10000)
+
+# prepare the logger
+parser = argparse.ArgumentParser()
+parser.add_argument("-p", "--profile", default="ipy_profile",
+                    help="Name of IPython profile to use")
+parser.add_argument("-m", "--model", default=m,
+                    help="The model with which you want to train")
+parser.add_argument("-t", "--trait", default=t,
+                    help="The trait on which you want to train")
+parser.add_argument("-f", "--featureset", default=f,
+                    help="The feature set to use")
+parser.add_argument("-d", "--database", default=db, help="The database to train on")
+parser.add_argument("-b", "--batchid", default=str(random_id), help="The ID with which different searches can be grouped")
+parser.add_argument("--cal-method", default=cal_method,
+                    help="The calibration method. Can be 'sigmoid' or 'isotonic'")
+parser.add_argument("-s", "--startcutoff", default=str(sc),
+                    help="The minimum length of a sample")
+parser.add_argument("-e", "--endcutoff", default=str(ec),
+                    help="The maximum length of a sample")
+
+# Overwrite config values with argument values
+args = parser.parse_args()
+profile = args.profile
+m = args.model
+t = args.trait
+f = args.featureset
+db = args.database
+b = args.batchid
+cal_method = args.cal_method
+sc = args.startcutoff
+ec = args.endcutoff
+sc = float(sc)
+ec = float(ec)
+
+# Import custom arguments config
+trait_dict = arguments_config.trait_dict
+feat_dict = arguments_config.feat_dict
+database_dict = arguments_config.database_dict
+
+if t.capitalize() in trait_dict.keys():
+    t = trait_dict[t.capitalize()]
+
+if f.lower() in feat_dict.keys():
+    f = feat_dict[f.lower()]
+
+if db.lower() in database_dict.keys():
+    db = database_dict[db.lower()]
+
+# --- SETUP MULTIPROCESSING, LOGGING AND PATHS ---
 
 starttime = time.time()
 datetime_start = datetime.now().strftime("%y%m%d_%H%M")
@@ -85,14 +141,23 @@ batch_path = f"{FILE_DIR}/results/{datetime_start}_{b}"
 isExist = os.path.exists(batch_path)
 # if it doesn't exist, create new folder
 if not isExist:
-   os.makedirs(batch_path)
-   os.makedirs(f"{batch_path}/best_estimators")
-#    os.makedirs(f"{batch_path}/confusion_matrices")
-   os.makedirs(f"{batch_path}/cv_results")
-#    os.makedirs(f"{batch_path}/results_reports")
-#    os.makedirs(f"{batch_path}/y_test_predictions")
+    os.makedirs(batch_path)
+    if save_model:
+        os.makedirs(f"{batch_path}/best_estimators")
+    os.makedirs(f"{batch_path}/cv_results")
+    os.makedirs(f"{batch_path}/outputs")
+    if save_graphs:
+        os.makedirs(f"{batch_path}/graphs")
 
 logging.info("Folders for batch checked or made")
+
+output_path = f"{batch_path}/outputs/{file_prefix}ouput.txt"
+
+# Print to both terminala and output file
+def print_save(text):
+    with open(output_path, "a") as file, contextlib.redirect_stdout(file):
+        print(text)
+    print(text)
 
 # prepare the engines
 c = Client(profile=profile)
@@ -105,6 +170,9 @@ bview = c.load_balanced_view()
 register_parallel_backend('ipyparallel',
                           lambda: IPythonParallelBackend(view=bview))
 
+print_save(f"\nSetup:")
+print_save(f"b: {b}, db: {db}, f: {f}, m: {m}, t: {t}, scoring: {scoring}, cal: {cal_method}")
+
 # --- LOAD DATA ---
 
 # load dataset
@@ -113,9 +181,9 @@ full_df = pd.read_pickle(f"{FILE_DIR}/data/{db}")
 
 # adjust time cutoff
 if sc != 0 and 'Length' in full_df.columns:
-    full_df = full_df[(full_df['Length'] >= sc * 1000)]
+    full_df = full_df[(full_df['Length'] >= sc)]
 if ec != 0 and 'Length' in full_df.columns:
-    full_df = full_df[(full_df['Length'] <= ec * 1000)]
+    full_df = full_df[(full_df['Length'] <= ec)]
 
 # define X and y
 X = full_df.iloc[:, begin_col_features:]
@@ -139,20 +207,18 @@ if y_n_cols > 1:
     # -- Multi label split --
 
     # Initial train_val-test split (80% train_val, 20% test)
-    X_train_val, X_test, y_train_vals, y_tests, train_val_indices, test_indices = msgs.multilabel_stratified_group_train_test_split(X, y, groups, test_size=0.2, random_state=seed)
+    X_train_val, X_test, y_train_vals, y_tests, train_val_indices, test_indices = mt.multilabel_stratified_group_split(X, y, groups, test_size=0.2, random_state=seed)
 
     groups_train_val = groups[train_val_indices]
     groups_test = groups[test_indices]
 
     # Split train_val into train and val for calibration (of whole dataset: 60% train, 20% validation)
-    X_train, X_val, y_trains, y_vals, train_indices, val_indices = msgs.multilabel_stratified_group_train_test_split(X_train_val, y_train_vals, groups_train_val, test_size=0.20, random_state=seed)
+    X_train, X_val, y_trains, y_vals, train_indices, val_indices = mt.multilabel_stratified_group_split(X_train_val, y_train_vals, groups_train_val, test_size=0.20, random_state=seed)
 
     groups_train = groups_train_val[train_indices]
     groups_val = groups_train_val[val_indices]
 
-    msgs.check_disjoint_groups(train_val_indices=train_val_indices, test_indices=test_indices, train_indices=train_indices, val_indices=val_indices, groups=groups)
-
-    msgs.stratification_report(y, y_trains, y_vals, y_tests, label_names)
+    print_save(mt.stratification_report(y, y_trains, y_tests, y_val=y_vals, labels=label_names))
 
     # Choose the label to train on
     t_idx = label_names.index(t)
@@ -185,6 +251,7 @@ reports = [None] * n_searches
 # Manually iterate over the outer StratifiedGroupKFold for GridSearchCV
 cv_gs = StratifiedGroupKFold(n_splits=n_searches, shuffle=True, random_state=seed)
 
+print_save(f"Training {t}")
 # -- cross-validation of the GridSearch --
 for idx, (train_idx_gs, test_idx_gs) in enumerate(cv_gs.split(X_train, y_train, groups_train)):
     X_train_gs, y_train_gs, X_test_gs, y_test_gs = X_train[train_idx_gs], y_train[train_idx_gs], X_train[test_idx_gs], y_train[test_idx_gs]
@@ -222,15 +289,10 @@ for idx, (train_idx_gs, test_idx_gs) in enumerate(cv_gs.split(X_train, y_train, 
     rmtree(cache)
 
 # Combine the cv_results_ of the different folds
-cv_results_ = functions.merge_cv_results(reports)
-
-# Save cv_results_ to file
-cv_results_.to_csv(f'{batch_path}/{file_prefix}best_result.csv')
+cv_results_ = merge_cv_results(reports)
 
 # Get the best parameters
 best_params_ = cv_results_.loc[cv_results_.index[0],'params']
-best_params_ = json.loads(best_params_.replace("'", '"'))
-best_params_
 
 # create a StratifiedGroupKFold object for the best estimator RFECV
 cv_rfecv_best = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=seed)
@@ -261,51 +323,87 @@ y_preds_calibrated = calibrated_estimator_.predict(X_test)
 
 # assert(list(y_preds_calibrated) == list(np.argmax(y_probs_calibrated, axis=1)))
 
-print(f"\n{str(best_params_)}")
+print_save(f"\n{str(best_params_)}")
 
-print("\nEvaluation Results:")
+print_save("\nEvaluation Results:")
 
 # Calculate the AUC-ROC score
-auc_roc = roc_auc_score(y_test, y_probs_calibrated)
-print(f"AUC-ROC score: {auc_roc:.3f}")
+auc_roc = round(roc_auc_score(y_test, y_probs_calibrated), 3)
+print_save(f"AUC-ROC score: {auc_roc:.3f}")
 
 # Calculate the balanced accuracy score
-bal_acc = balanced_accuracy_score(y_test, y_preds_calibrated)
-print(f"Balanced accuracy score: {bal_acc:.3f}")
+bal_acc = round(balanced_accuracy_score(y_test, y_preds_calibrated), 3)
+print_save(f"Balanced accuracy score: {bal_acc:.3f}")
+
+# Calculate the accuracy score
+acc = round(accuracy_score(y_test, y_preds_calibrated), 3)
+print_save(f"Accuracy score: {acc:.3f}")
 
 # Calculate the Brier score
-brier_score = brier_score_loss(y_test, y_probs_calibrated)
-print(f"Brier score: {brier_score:.3f}")
+brier_score = round(brier_score_loss(y_test, y_probs_calibrated), 3)
+print_save(f"Brier score: {brier_score:.3f}")
 
 # Classification report
-
-print("\nClassification report:\n", classification_report(y_test, y_preds_calibrated))
+print_save(f"\nClassification report:\n{classification_report(y_test, y_preds_calibrated)}")
 
 # Confusion matrix
-print("Confusion matrix:\n", confusion_matrix(y_test, y_preds_calibrated))
+print_save(f"Confusion matrix:\n{confusion_matrix(y_test, y_preds_calibrated)}")
 
-print("\nTotal time:", (time.time() - starttime))
+db_name = db.split("-")[0]
+# create the string to add to the main results file
+main_results_string = [datetime_start,b,db_name,sc,ec,f,m,t,auc_roc,bal_acc, acc, brier_score]
+for i, x in enumerate(best_estimator_):
+    if i == 1:
+        if str(x) != 'passthrough':
+            x = f"{str(x).split('=')[1][:-1]}, {x.n_components_}"
+    if i == 2:
+        x = x.n_features_
+    main_results_string.append(str(x).replace('\n', ''))
+main_results_string.append(cal_method)
 
-# Calculate the ROC curve
-fpr, tpr, _ = roc_curve(y_test, y_probs_calibrated)
+# --- SAVE RESULTS ---
 
-# # Plot the ROC curve
-# plt.plot(fpr, tpr, label=f'AUC-ROC: {auc_roc:.3f}')
-# plt.plot([0, 1], [0, 1], linestyle='--', label='Random classifier')
-# plt.xlabel('False Positive Rate')
-# plt.ylabel('True Positive Rate')
-# plt.title('Receiver Operating Characteristic (ROC) curve')
-# plt.legend()
-# plt.show()
+# Save cv_results_ to file
+cv_results_.to_csv(f'{batch_path}/cv_results/{file_prefix}best_result.csv')
 
-# # Calibration curve
-# true_proportions, predicted_proportions = calibration_curve(y_test, y_probs_calibrated, n_bins=10)
+if save_model:
+    joblib.dump(best_estimator_, f"{batch_path}/best_estimators/{file_prefix}best_estimator.joblib")
 
-# # Plot the calibration curve
-# plt.plot(predicted_proportions, true_proportions, marker='o', label='Calibrated SVM')
-# plt.plot([0, 1], [0, 1], linestyle='--', label='Perfectly calibrated')
-# plt.xlabel('Predicted probability')
-# plt.ylabel('True probability')
-# plt.title('Calibration curve')
-# plt.legend()
-# plt.show()
+
+# write string to the main results file
+with open(f"{FILE_DIR}/results/main_results.csv", 'a') as fw:
+    w = writer(fw, delimiter=';')
+    w.writerow(main_results_string)
+    fw.close()
+
+# Print total duration of execution
+print_save(f"\nTotal time: {round((time.time() - starttime),1)}s")
+
+if save_graphs:
+    roc_name = f"{batch_path}/graphs/{file_prefix}roc_curve.png"
+    cal_name = f"{batch_path}/graphs/{file_prefix}cal_curve.png"
+
+    # Calculate the ROC curve
+    fpr, tpr, _ = roc_curve(y_test, y_probs_calibrated)
+
+    # Plot the ROC curve
+    plt.plot(fpr, tpr, label=f'AUC-ROC: {auc_roc:.3f}')
+    plt.plot([0, 1], [0, 1], linestyle='--', label='Random classifier')
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.title('Receiver Operating Characteristic (ROC) curve')
+    plt.savefig(os.path.join(roc_name), format='png')  # Save the plot to a file
+    plt.clf()  # Clear the current plot
+
+    # Calibration curve
+    true_proportions, predicted_proportions = calibration_curve(y_test, y_probs_calibrated, n_bins=10)
+
+    # Plot the calibration curve
+    plt.plot(predicted_proportions, true_proportions, marker='o', label='Calibrated model')
+    plt.plot([0, 1], [0, 1], linestyle='--', label='Perfectly calibrated')
+    plt.xlabel('Predicted probability')
+    plt.ylabel('True probability')
+    plt.title('Calibration curve')
+    plt.legend()
+    plt.savefig(os.path.join(cal_name), format='png')  # Save the plot to a file
+    plt.clf()  # Clear the current plot

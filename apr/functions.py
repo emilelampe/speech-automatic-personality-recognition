@@ -1,4 +1,5 @@
 import pandas as pd
+import re
 
 def merge_cv_results(cv_results_list):
     '''Takes a list of 5 cv_results_ DataFrames and returns a single merged DataFrame as if 5-fold GridSearchCV was performed'''
@@ -12,8 +13,8 @@ def merge_cv_results(cv_results_list):
 
     combined_df = pd.concat(cv_results_list, ignore_index=True)
 
-    # Convert "params" column to string
-    combined_df["params"] = combined_df["params"].apply(str)
+    # Convert "params" column to string column
+    combined_df["params_str"] = combined_df["params"].apply(str)
 
     # Define dictionary for aggregation
     aggregate_dict = {
@@ -21,6 +22,7 @@ def merge_cv_results(cv_results_list):
         "std_fit_time": "mean",
         "mean_score_time": "mean",
         "std_score_time": "mean",
+        "params": "first",
         "split0_test_score": "first",
         "split1_test_score": "first",
         "split2_test_score": "first",
@@ -34,7 +36,7 @@ def merge_cv_results(cv_results_list):
         aggregate_dict[col] = "first"
 
     # Group by 'params' column, and aggregate the other columns
-    grouped_df = combined_df.groupby("params", as_index=False).agg(aggregate_dict)
+    grouped_df = combined_df.groupby("params_str", as_index=False).agg(aggregate_dict)
 
     # Calculate mean_test_score and std_test_score
     test_score_columns = [f"split{i}_test_score" for i in range(5)]

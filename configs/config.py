@@ -5,6 +5,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.svm import SVC
 from sklearn.tree import DecisionTreeClassifier
+from sklearn.decomposition import PCA
 
 # ------------
 # ---CONFIG---
@@ -12,30 +13,52 @@ from sklearn.tree import DecisionTreeClassifier
 
 '''The config is divided in 2 sections:
     - The first section contains specific parameters such as the dataset filename
-    - The second section contains the parameter grid for the grid search'''
+    - The second section contains the parameter grid for the grid search
+    
+    Config values will be overwritten by command line arguments if they are given.'''
 
 # database to use
-# For single label example dataset: 'single_label_example_dataset.pkl' (begin_col_labels = 2, begin_col_features = 3), from ("https://archive.ics.uci.edu/ml/machine-learning-databases/spambase/spambase.data")
-# db = "full-sspn-egemaps-average.pkl"
-db = "single_label_example_dataset.pkl"
+# For single label example dataset: 'single_label_example_dataset.pkl' (begin_col_labels = 2, begin_col_features = 3)
+# Example from https://archive.ics.uci.edu/ml/machine-learning-databases/spambase/spambase.data
+db = "spc-egemaps.pkl"
+# db = "nsc-egemaps.pkl"
 
-# Column indices where the labels and the features begin
-begin_col_labels = 2
-begin_col_features = 3
+# Column indices where the labels and the features begin for each dataset you want to use
+if db == "nsc-egemaps.pkl":    
+    begin_col_labels = 4
+    begin_col_features = 10
+if db == "spc-egemaps.pkl":
+    begin_col_labels = 2
+    begin_col_features = 8
+if db == "own-egemaps.pkl":
+    begin_col_labels = 3
+    begin_col_features = 9
+if db == "own_combined-egemaps.pkl":
+    begin_col_labels = 3
+    begin_col_features = 9
+
+# Feature set ('egemaps', 'compare')
+f = 'egemaps'
+
+# Model to use ('svm_rbf', 'knn', 'rf', 'svm_l')
+# m = 'svm_rbf'
+m = 'rf'
 
 # Label column to choose in case of multi-label dataset
-t = 'Label'
+t = 'Extraversion'
 
-# model to use ('svm_rbf', 'knn', 'rf', 'svm_l')
-m = 'svm_rbf'
-
-
-# minimum and maximum length cutoff ('Length' column needed)
-sc = 0
+# minimum and maximum length cutoff in seconds ('Length' column needed)
+sc = 7.5
 ec = 0
 
 # scoring metric
 scoring = 'roc_auc'
+
+# if you want to save graphs
+save_graphs = True
+
+# if you want to save the trained model
+save_model = True
 
 # random seed
 seed = 42
@@ -50,12 +73,6 @@ clf_rfecv = DecisionTreeClassifier(random_state=seed)
 cal_method = 'sigmoid'
 
 # # step size for RFECV
-# if f == 'compare':
-#     # step = 0.2
-#     step = 400
-# elif f == 'egemaps':
-#     step = 3
-
 step_rfecv = 1
 
 # --- PARAMETER GRID ---
@@ -75,8 +92,8 @@ max_depth_range.append(None)
 # Preprocessing parameters
 pre_pars = {
         'scaler': [StandardScaler()],
-        # 'pca': [PCA(0.95), 'passthrough'],
-        'pca': ['passthrough'],
+        'pca': [PCA(0.95)],
+        # 'pca': ['passthrough'],
     }
 
 # Model parameters
@@ -93,14 +110,16 @@ model_pars = {
         # 'clf__base_estimator__C': C_range,
         'clf__C': [1, 10, 100, 1000],
         # 'clf__base_estimator__gamma': gamma_range,
-        'clf__gamma': [0.1, 0.01, 0.001, 0.0001, 0.00001]
+        'clf__gamma': [0.1, 0.01, 0.001, 0.0001, 0.0001]
     },
     # Random Forest
     'rf':
     {
         'clf': [RandomForestClassifier(random_state=seed, n_jobs=1)],
-        'clf__n_estimators': [10, 100, 250, 500, 1000, 1500],
-        'clf__max_depth': max_depth_range
+        # 'clf__n_estimators': [10, 100, 250, 500, 1000, 1500],
+        'clf__n_estimators': [100, 250, 500, 1000],
+        # 'clf__max_depth': max_depth_range
+        'clf__max_depth': [1, 2, 4, None]
     },
     # kNeirestNeighbour
     'knn':

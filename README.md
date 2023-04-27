@@ -1,7 +1,5 @@
 # Automatic Personality Recognition (APR) from Speech
 
-## Introduction
-
 This repository contains the code for a thesis project on speech-based Automatic Personality Recognition (APR) at TU Delft. The project aims to explore the challenges of APR and investigate two new databases for this purpose: Nautilus Speaker Characterization (NSC) corpus (scripted speech) and a spontaneous speech dataset collected by a research team from Universitat Politècnica de València. The performance of the models is compared with those trained on a widely-used Automatic Personality Perception (APP) database: the Speaker Personality Corpus (SPC) from the INTERSPEECH 2012 Speaker Trait Challenge. The machine learning algorithms used for this project are Support Vector Machine (SVM) with RBF kernel, k-Nearest Neighbors (kNN), and Random Forest.
 
 As APR is a multi-label classification problem, this project can be used as well for other multi-label classification problems. Furthermore, the data is always split speaker-indepent, both in the train, validation and test split, as in the inner cross-validation (using StratifiedGroupKFold). It could therefore also be of use for other projects that need speaker/group-independence.
@@ -25,11 +23,11 @@ log file:   YYMMDD_hhmm_{batch_id}.log
 Columns with metadata should be placed first, then the labels, and then the features.
 The following is an example:
 
-| **ID**   | **Group**  | **Length** | **Label 1** | **Label 2** | **Feature 1** | **Feature 2** |
-|----------|------------|------------|-------------|-------------|---------------|---------------|
-| clip_001 | speaker_01 | 5204       | 1           | 0           | 0.6753        | 0.3563        |
-| clip_002 | speaker_02 | 1107       | 0           | 0           | 0.2476        | 0.1375        |
-| clip_003 | speaker_01 | 4593       | 1           | 0           | 0.4674        | 0.1378        |
+| **ID** | **Group** | **Length** | **Label 1** | **Label 2** | **Feature 1** | **Feature 2** |
+| ------------ | --------------- | ---------------- | ----------------- | ----------------- | ------------------- | ------------------- |
+| clip_001     | speaker_01      | 5204             | 1                 | 0                 | 0.6753              | 0.3563              |
+| clip_002     | speaker_02      | 1107             | 0                 | 0                 | 0.2476              | 0.1375              |
+| clip_003     | speaker_01      | 4593             | 1                 | 0                 | 0.4674              | 0.1378              |
 
 ## Structure
 
@@ -93,27 +91,23 @@ To use the training script, follow these steps:
    git clone https://github.com/emilelampe/speech-automatic-personality-recognition.git
    cd speech-automatic-personality-recognition
    ```
-
 2. Update the dataset paths in the `config.py` script to match your local paths:
 
    ```python
    db = "path/to/your/dataset.pkl"
    ```
-
 3. If running locally:
 
    1. With IPython Parallel, start the engines and, after receiving a message they have successfully been start up, execute `run.py`
 
       ```
       ipcluster start --profile=ipy_profile &
-      
+
       # wait for message for successfull start of the engines
-      
+
       python run.py
       ```
-
    2. Without IPython Parallel, u
-
 4. If running on the HPC, run the .sh file with the right settings.
 
    ```python
@@ -123,6 +117,7 @@ To use the training script, follow these steps:
 ### Config
 
 The config is divided in two parts:
+
 - Parameters for specific settings
 - A parameter grid for the grid search
 
