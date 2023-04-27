@@ -1,1 +1,4 @@
 datetime;batchid;database;sc;ec;feature_set;model;trait; auc_roc;bal_acc;acc;brier;scaling;pca;n_feat_sel;clf;calibration
+230427_1622;2174;spc;0.0;0.0;egemaps;svm_rbf;Extraversion;0.851;0.762;0.764;0.158;StandardScaler();passthrough;66;SVC(C=1, gamma=0.01, probability=True, random_state=42);sigmoid
+230427_1630;6469;nsc;0.0;0.0;egemaps;svm_rbf;Extraversion;0.547;0.528;0.572;0.265;StandardScaler();passthrough;11;SVC(C=1, gamma=0.0001, probability=True, random_state=42);sigmoid
+230427_1645;1014;nsc;7.5;0.0;egemaps;svm_rbf;Extraversion;0.555;0.497;0.579;0.243;StandardScaler();passthrough;86;SVC(C=1, gamma=0.001, probability=True, random_state=42);sigmoid

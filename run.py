@@ -45,10 +45,9 @@ db = config.db
 f = config.f
 t = config.t
 m = config.m
-begin_col_labels = config.begin_col_labels
-begin_col_features = config.begin_col_features
 sc = config.sc
 ec = config.ec
+label_feature_indexes = config.label_feature_indexes
 scoring = config.scoring
 save_graphs = config.save_graphs
 save_model = config.save_model
@@ -108,6 +107,10 @@ sc = float(sc)
 ec = float(ec)
 timestamp = timestamp
 
+# Define index of labels and features after final database selection
+begin_col_labels = label_feature_indexes[db][0]
+begin_col_features = label_feature_indexes[db][1]
+
 # Import custom arguments config
 trait_dict = arguments_config.trait_dict
 feat_dict = arguments_config.feat_dict
@@ -128,7 +131,7 @@ param_grid = model_pars[m]
 
 # --- SETUP MULTIPROCESSING, LOGGING AND PATHS ---
 
-file_prefix = f"{b}-{m}-{t}-"
+file_prefix = f"{b}-{m}-{t}"
 
 logfilename = os.path.join(
     FILE_DIR, f'log/{timestamp}_{b}.log')
@@ -155,7 +158,7 @@ if not isExist:
 
 logging.info("Folders for batch checked or made")
 
-output_path = f"{batch_path}/outputs/{file_prefix}output.txt"
+output_path = f"{batch_path}/outputs/{file_prefix}-output.txt"
 
 # Print to both terminala and output file
 def print_save(text):
@@ -181,6 +184,7 @@ print_save(f"b: {b}, db: {db}, f: {f}, m: {m}, t: {t}, scoring: {scoring}, cal: 
 
 # load dataset
 # full_df = pd.read_pickle(f"{FILE_DIR}/data/{d}-{f}-{l}.pkl")
+print(begin_col_features, begin_col_labels)
 full_df = pd.read_pickle(f"{FILE_DIR}/data/{db}")
 
 # adjust time cutoff
@@ -368,10 +372,10 @@ main_results_string.append(cal_method)
 # --- SAVE RESULTS ---
 
 # Save cv_results_ to file
-cv_results_.to_csv(f'{batch_path}/cv_results/{file_prefix}best_result.csv')
+cv_results_.to_csv(f'{batch_path}/cv_results/{file_prefix}-best_result.csv')
 
 if save_model:
-    joblib.dump(best_estimator_, f"{batch_path}/best_estimators/{file_prefix}best_estimator.joblib")
+    joblib.dump(best_estimator_, f"{batch_path}/best_estimators/{file_prefix}-best_estimator.joblib")
 
 
 # write string to the main results file
@@ -384,8 +388,8 @@ with open(f"{FILE_DIR}/results/main_results.csv", 'a') as fw:
 print_save(f"\nTotal time: {round((time.time() - starttime),1)}s")
 
 if save_graphs:
-    roc_name = f"{batch_path}/graphs/{file_prefix}roc_curve.png"
-    cal_name = f"{batch_path}/graphs/{file_prefix}cal_curve.png"
+    roc_name = f"{batch_path}/graphs/roc_curve-{file_prefix}.png"
+    cal_name = f"{batch_path}/graphs/cal_curve-{file_prefix}.png"
 
     # Calculate the ROC curve
     fpr, tpr, _ = roc_curve(y_test, y_probs_calibrated)

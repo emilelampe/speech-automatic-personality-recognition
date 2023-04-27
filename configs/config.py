@@ -23,19 +23,14 @@ from sklearn.decomposition import PCA
 db = "spc-egemaps.pkl"
 # db = "nsc-egemaps.pkl"
 
-# Column indices where the labels and the features begin for each dataset you want to use
-if db == "nsc-egemaps.pkl":    
-    begin_col_labels = 4
-    begin_col_features = 10
-if db == "spc-egemaps.pkl":
-    begin_col_labels = 2
-    begin_col_features = 8
-if db == "own-egemaps.pkl":
-    begin_col_labels = 3
-    begin_col_features = 9
-if db == "own_combined-egemaps.pkl":
-    begin_col_labels = 3
-    begin_col_features = 9
+# Indexes where the labels start and where the features start '(label_idx, feature_idx)'
+label_feature_indexes = {
+    'single_label_example_dataset.pkl': (2, 3),
+    'spc-egemaps.pkl': (2, 8),
+    'nsc-egemaps.pkl': (4, 10),
+    'own-egemaps.pkl': (3, 9),
+    'own_combined-egemaps.pkl': (3, 9)
+}
 
 # Feature set ('egemaps', 'compare')
 f = 'egemaps'
