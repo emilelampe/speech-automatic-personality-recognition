@@ -202,6 +202,7 @@ feature_names = list(X.columns.values)
 label_names = list(y.columns.values)
 groups = full_df['Group'].to_numpy()
 
+
 # convert to numpy
 X = X.to_numpy()
 y = y.to_numpy()
@@ -236,6 +237,7 @@ if y_n_cols > 1:
 else:
     # -- Single label split --
 
+    print('NOT GOOD')
     # Convert single column y to 1D array
     y = y.ravel()
 
@@ -256,18 +258,37 @@ else:
 # Variables to keep track of the best model and score
 reports = [None] * n_searches
 
+
 # Manually iterate over the outer StratifiedGroupKFold for GridSearchCV
 cv_gs = StratifiedGroupKFold(n_splits=n_searches, shuffle=True, random_state=seed)
 
 print_save(f"Training {t}")
 # -- cross-validation of the GridSearch --
-for idx, (train_idx_gs, test_idx_gs) in enumerate(cv_gs.split(X_train, y_train, groups_train)):
+for idx, (train_idx_gs, test_idx_gs) in enumerate(StratifiedGroupKFold(n_splits=n_searches, shuffle=True, random_state=seed).split(X_train, y_train, groups_train)):
+    print("Fold ", (idx + 1))
     X_train_gs, y_train_gs, X_test_gs, y_test_gs = X_train[train_idx_gs], y_train[train_idx_gs], X_train[test_idx_gs], y_train[test_idx_gs]
     groups_train_gs = groups_train[train_idx_gs]
     groups_test_gs =  groups_train[test_idx_gs]
 
     # Create a StratifiedGroupKFold object for the RFECV
-    cv_rfecv = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=seed)
+    cv_rfecv = BalancedStratifiedGroupKFold(n_splits=5, max_attempts=1000)
+
+    test_fold = np.zeros(len(y_train))
+    test_fold[train_idx_gs] = -1
+
+    cv_fold = PredefinedSplit(test_fold=test_fold)
+
+    # for j, (train_fold, test_fold) in enumerate(cv_fold.split()):
+    #     X_train_fold, X_test_fold, y_train_fold, y_test_fold = X_train[train_fold], X_train[test_fold], y_train[train_fold], y_train[test_fold]
+    #     groups_train_fold = groups_train[train_fold]
+    #     groups_test_fold = groups_train[test_fold]
+    
+    # if idx==2:
+    #     for idx2, (train_r, test_r) in enumerate(cv_rfecv.split(X_train_fold, y_train_fold, groups_train_fold)):
+    #         X_train_r, X_test_r, y_train_r, y_test_r = X_train_fold[train_r], X_train_fold[test_r], y_train_fold[train_r], y_train_fold[test_r]
+    #         groups_train_r = groups_train_fold[train_r]
+    #         groups_test_r = groups_train_fold[test_r]
+    #         print(y_test_r)
 
     cache = mkdtemp()
 
@@ -279,12 +300,6 @@ for idx, (train_idx_gs, test_idx_gs) in enumerate(cv_gs.split(X_train, y_train, 
         ('clf', SVC(kernel='rbf'))
     ],memory=cache)
 
-    test_fold = np.zeros(len(y_train))
-    test_fold[train_idx_gs] = -1
-
-    cv_fold = PredefinedSplit(test_fold=test_fold)
-
-    print("Fold ", (idx + 1))
     # Perform a Grid Search for the current fold
     gs = GridSearchCV(pipe, param_grid, scoring=scoring, n_jobs=len(c), cv=cv_fold, error_score='raise', verbose=1)
 

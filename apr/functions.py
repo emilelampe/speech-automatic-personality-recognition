@@ -1,5 +1,9 @@
 import pandas as pd
+import numpy as np
 import re
+from sklearn.model_selection import StratifiedGroupKFold
+
+
 
 def merge_cv_results(cv_results_list):
     '''Takes a list of 5 cv_results_ DataFrames and returns a single merged DataFrame as if 5-fold GridSearchCV was performed'''
@@ -60,3 +64,26 @@ def merge_cv_results(cv_results_list):
     final_df = final_df.sort_values(by="rank_test_score", ascending=True, ignore_index=True)
 
     return final_df
+
+
+class BalancedStratifiedGroupKFold:
+    '''StratifiedGroupKFold that ensures that each fold has both classes in y_train and y_test, if the data allows it.'''
+    def __init__(self, n_splits=5, max_attempts=1000):
+        self.n_splits = n_splits
+        self.max_attempts = max_attempts
+
+    def _check_folds(self, X, y, groups, cv):
+        for train_idx, test_idx in cv.split(X, y, groups):
+            y_test = y[test_idx]
+            y_train = y[train_idx]
+            if (len(np.unique(y_test)) < 2) or (len(np.unique(y_train)) < 2):
+                return False
+        return True
+
+    def split(self, X, y, groups):
+        for seed in range(self.max_attempts):
+            cv = StratifiedGroupKFold(n_splits=self.n_splits, shuffle=True, random_state=seed)
+            if self._check_folds(X, y, groups, cv):
+                return cv.split(X, y, groups)
+
+        raise ValueError(f'Failed to find suitable folds after {self.max_attempts} attempts')

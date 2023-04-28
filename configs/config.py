@@ -50,10 +50,10 @@ ec = 0
 scoring = 'roc_auc'
 
 # if you want to save graphs
-save_graphs = True
+save_graphs = False
 
 # if you want to save the trained model
-save_model = True
+save_model = False
 
 # random seed
 seed = 42
