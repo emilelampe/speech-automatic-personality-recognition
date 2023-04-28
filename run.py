@@ -131,7 +131,8 @@ param_grid = model_pars[m]
 
 # --- SETUP MULTIPROCESSING, LOGGING AND PATHS ---
 
-file_prefix = f"{b}-{m}-{t}"
+
+file_prefix = f"{timestamp}-{b}-{db}-{sc}-{ec}-{m}-{f}-{t}-{cal_method}".replace(".","_")
 
 logfilename = os.path.join(
     FILE_DIR, f'log/{timestamp}_{b}.log')
