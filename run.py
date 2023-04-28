@@ -160,11 +160,7 @@ logging.info("Folders for batch checked or made")
 
 output_path = f"{batch_path}/outputs/{file_prefix}-output.txt"
 
-# Print to both terminala and output file
-def print_save(text):
-    with open(output_path, "a") as file, contextlib.redirect_stdout(file):
-        print(text)
-    print(text)
+ps = PrintSaver(output_path)
 
 # prepare the engines
 c = Client(profile=profile)
@@ -177,14 +173,12 @@ bview = c.load_balanced_view()
 register_parallel_backend('ipyparallel',
                           lambda: IPythonParallelBackend(view=bview))
 
-print_save(f"\nSetup:")
-print_save(f"b: {b}, db: {db}, f: {f}, m: {m}, t: {t}, scoring: {scoring}, cal: {cal_method}")
+ps.print_save(f"\nSetup:")
+ps.print_save(f"b: {b}, db: {db}, sc: {sc}, ec: {ec}, f: {f}, m: {m}, t: {t}, scoring: {scoring}, cal: {cal_method}")
 
 # --- LOAD DATA ---
 
 # load dataset
-# full_df = pd.read_pickle(f"{FILE_DIR}/data/{d}-{f}-{l}.pkl")
-print(begin_col_features, begin_col_labels)
 full_df = pd.read_pickle(f"{FILE_DIR}/data/{db}")
 
 # adjust time cutoff
@@ -207,6 +201,8 @@ groups = full_df['Group'].to_numpy()
 X = X.to_numpy()
 y = y.to_numpy()
 
+ps.print_save(f"\nTotal number of samples: {len(y[:,0])}")
+
 # --- SPLIT TRAIN, VAL, TEST ---
 
 # Number of labels
@@ -227,7 +223,7 @@ if y_n_cols > 1:
     groups_train = groups_train_val[train_indices]
     groups_val = groups_train_val[val_indices]
 
-    print_save(mt.stratification_report(y, y_trains, y_tests, y_val=y_vals, labels=label_names))
+    ps.print_save(mt.stratification_report(y, y_trains, y_tests, y_val=y_vals, labels=label_names))
 
     # Choose the label to train on
     t_idx = label_names.index(t)
@@ -237,7 +233,6 @@ if y_n_cols > 1:
 else:
     # -- Single label split --
 
-    print('NOT GOOD')
     # Convert single column y to 1D array
     y = y.ravel()
 
@@ -262,33 +257,21 @@ reports = [None] * n_searches
 # Manually iterate over the outer StratifiedGroupKFold for GridSearchCV
 cv_gs = StratifiedGroupKFold(n_splits=n_searches, shuffle=True, random_state=seed)
 
-print_save(f"Training {t}")
+ps.print_save(f"Training {t}")
 # -- cross-validation of the GridSearch --
 for idx, (train_idx_gs, test_idx_gs) in enumerate(StratifiedGroupKFold(n_splits=n_searches, shuffle=True, random_state=seed).split(X_train, y_train, groups_train)):
-    print("Fold ", (idx + 1))
+    print(f"Fold {idx+1}")
     X_train_gs, y_train_gs, X_test_gs, y_test_gs = X_train[train_idx_gs], y_train[train_idx_gs], X_train[test_idx_gs], y_train[test_idx_gs]
     groups_train_gs = groups_train[train_idx_gs]
     groups_test_gs =  groups_train[test_idx_gs]
 
     # Create a StratifiedGroupKFold object for the RFECV
-    cv_rfecv = BalancedStratifiedGroupKFold(n_splits=5, max_attempts=1000)
+    cv_rfecv = BalancedStratifiedGroupKFold(n_splits=5, max_attempts=1000, print_saver=ps, outer_fold=(idx+1))
 
     test_fold = np.zeros(len(y_train))
     test_fold[train_idx_gs] = -1
 
     cv_fold = PredefinedSplit(test_fold=test_fold)
-
-    # for j, (train_fold, test_fold) in enumerate(cv_fold.split()):
-    #     X_train_fold, X_test_fold, y_train_fold, y_test_fold = X_train[train_fold], X_train[test_fold], y_train[train_fold], y_train[test_fold]
-    #     groups_train_fold = groups_train[train_fold]
-    #     groups_test_fold = groups_train[test_fold]
-    
-    # if idx==2:
-    #     for idx2, (train_r, test_r) in enumerate(cv_rfecv.split(X_train_fold, y_train_fold, groups_train_fold)):
-    #         X_train_r, X_test_r, y_train_r, y_test_r = X_train_fold[train_r], X_train_fold[test_r], y_train_fold[train_r], y_train_fold[test_r]
-    #         groups_train_r = groups_train_fold[train_r]
-    #         groups_test_r = groups_train_fold[test_r]
-    #         print(y_test_r)
 
     cache = mkdtemp()
 
@@ -344,33 +327,31 @@ calibrated_estimator_.fit(X_val, y_val)
 y_probs_calibrated = calibrated_estimator_.predict_proba(X_test)[:, 1]
 y_preds_calibrated = calibrated_estimator_.predict(X_test)
 
-# assert(list(y_preds_calibrated) == list(np.argmax(y_probs_calibrated, axis=1)))
+ps.print_save(f"\n{str(best_params_)}")
 
-print_save(f"\n{str(best_params_)}")
-
-print_save("\nEvaluation Results:")
+ps.print_save("\nEvaluation Results:")
 
 # Calculate the AUC-ROC score
 auc_roc = round(roc_auc_score(y_test, y_probs_calibrated), 3)
-print_save(f"AUC-ROC score: {auc_roc:.3f}")
+ps.print_save(f"AUC-ROC score: {auc_roc:.3f}")
 
 # Calculate the balanced accuracy score
 bal_acc = round(balanced_accuracy_score(y_test, y_preds_calibrated), 3)
-print_save(f"Balanced accuracy score: {bal_acc:.3f}")
+ps.print_save(f"Balanced accuracy score: {bal_acc:.3f}")
 
 # Calculate the accuracy score
 acc = round(accuracy_score(y_test, y_preds_calibrated), 3)
-print_save(f"Accuracy score: {acc:.3f}")
+ps.print_save(f"Accuracy score: {acc:.3f}")
 
 # Calculate the Brier score
 brier_score = round(brier_score_loss(y_test, y_probs_calibrated), 3)
-print_save(f"Brier score: {brier_score:.3f}")
+ps.print_save(f"Brier score: {brier_score:.3f}")
 
 # Classification report
-print_save(f"\nClassification report:\n{classification_report(y_test, y_preds_calibrated)}")
+ps.print_save(f"\nClassification report:\n{classification_report(y_test, y_preds_calibrated)}")
 
 # Confusion matrix
-print_save(f"Confusion matrix:\n{confusion_matrix(y_test, y_preds_calibrated)}")
+ps.print_save(f"Confusion matrix:\n{confusion_matrix(y_test, y_preds_calibrated)}")
 
 db_name = db.split("-")[0]
 # create the string to add to the main results file
@@ -400,7 +381,7 @@ with open(f"{FILE_DIR}/results/main_results.csv", 'a') as fw:
     fw.close()
 
 # Print total duration of execution
-print_save(f"\nTotal time: {round((time.time() - starttime),1)}s")
+ps.print_save(f"\nTotal time: {round((time.time() - starttime),1)}s")
 
 if save_graphs:
     roc_name = f"{batch_path}/graphs/roc_curve-{file_prefix}.png"

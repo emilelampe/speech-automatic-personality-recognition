@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import re
+import contextlib
 from sklearn.model_selection import StratifiedGroupKFold
 
 
@@ -65,12 +66,23 @@ def merge_cv_results(cv_results_list):
 
     return final_df
 
+class PrintSaver():
+    '''Both prints a message and saves it to a file.'''
+    def __init__(self, output_path):
+        self.output_path = output_path
+    
+    def print_save(self, text):
+        with open(self.output_path, "a") as file, contextlib.redirect_stdout(file):
+            print(text)
+        print(text)
 
 class BalancedStratifiedGroupKFold:
     '''StratifiedGroupKFold that ensures that each fold has both classes in y_train and y_test, if the data allows it.'''
-    def __init__(self, n_splits=5, max_attempts=1000):
+    def __init__(self, n_splits=5, max_attempts=1000, print_saver=None, outer_fold=None):
         self.n_splits = n_splits
         self.max_attempts = max_attempts
+        self.print_saver = print_saver
+        self.outer_fold = outer_fold
 
     def _check_folds(self, X, y, groups, cv):
         for train_idx, test_idx in cv.split(X, y, groups):
@@ -84,6 +96,11 @@ class BalancedStratifiedGroupKFold:
         for seed in range(self.max_attempts):
             cv = StratifiedGroupKFold(n_splits=self.n_splits, shuffle=True, random_state=seed)
             if self._check_folds(X, y, groups, cv):
+                if self.print_saver:
+                    if self.outer_fold:
+                        self.print_saver.print_save(f"Found suitable inner folds on seed {seed} for outer fold {self.outer_fold}.")
+                    else:
+                        self.print_saver.print_save(f"Found suitable inner folds on seed {seed}.")
                 return cv.split(X, y, groups)
 
         raise ValueError(f'Failed to find suitable folds after {self.max_attempts} attempts')
