@@ -55,8 +55,14 @@ save_graphs = False
 # if you want to save the trained model
 save_model = False
 
+# whether to calibrate the model
+calibration = False
+
 # random seed
 seed = 42
+
+# number of bootstrap samples
+n_bootstrap = 1000
 
 # number of GridSearch folds
 n_searches = 5

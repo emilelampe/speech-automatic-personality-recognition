@@ -3,6 +3,7 @@ import numpy as np
 import re
 import contextlib
 from sklearn.model_selection import StratifiedGroupKFold
+from scipy.stats import norm
 
 
 
@@ -75,6 +76,14 @@ class PrintSaver():
         with open(self.output_path, "a") as file, contextlib.redirect_stdout(file):
             print(text)
         print(text)
+
+def calculate_p_value(observed, mean, std_dev, n_bootstraps):
+    # Calculate the z-score
+    z_score = (observed - mean) / (std_dev/ np.sqrt(n_bootstraps))
+
+    # Calculate the two-tailed p-value
+    p_value = 2 * norm.sf(abs(z_score))
+    return p_value
 
 class BalancedStratifiedGroupKFold:
     '''StratifiedGroupKFold that ensures that each fold has both classes in y_train and y_test, if the data allows it.'''

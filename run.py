@@ -19,7 +19,7 @@ from sklearn.feature_selection import RFECV
 from sklearn.svm import SVC, LinearSVC
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.pipeline import Pipeline
-from sklearn.metrics import accuracy_score, brier_score_loss, classification_report, confusion_matrix, roc_auc_score, roc_curve, balanced_accuracy_score
+from sklearn.metrics import accuracy_score, auc, brier_score_loss, classification_report, confusion_matrix, f1_score, precision_score, recall_score, roc_auc_score, roc_curve, balanced_accuracy_score
 import pandas as pd
 import json
 import joblib
@@ -29,6 +29,8 @@ import random
 from random import randint
 import maestros.functions as mt
 from csv import writer
+from sklearn.utils import resample
+from scipy.stats import ttest_1samp
 
 # parallel processing imports
 sys.modules['sklearn.externals.joblib'] = joblib
@@ -57,7 +59,9 @@ pre_pars = config.pre_pars
 model_pars = config.model_pars
 clf_rfecv = config.clf_rfecv
 step_rfecv = config.step_rfecv
+calibration = config.calibration
 cal_method = config.cal_method
+n_bootstrap = config.n_bootstrap
 
 # --- ARGUMENTS SETTINGS ---
 
@@ -105,7 +109,7 @@ sc = args.startcutoff
 ec = args.endcutoff
 sc = float(sc)
 ec = float(ec)
-timestamp = timestamp
+timestamp = args.timestamp
 
 # Define index of labels and features after final database selection
 begin_col_labels = label_feature_indexes[db][0]
@@ -131,8 +135,13 @@ param_grid = model_pars[m]
 
 # --- SETUP MULTIPROCESSING, LOGGING AND PATHS ---
 
+if calibration:
+    cal_str = cal_method
+else:
+    cal_str = "no_cal"
 
-file_prefix = f"{timestamp}-{b}-{db}-{sc}-{ec}-{m}-{f}-{t}-{cal_method}".replace(".","_")
+file_prefix = f"{timestamp}-{b}-{db}-{sc}-{ec}-{m}-{f}-{t}-{cal_str}".replace(".","_")
+
 
 logfilename = os.path.join(
     FILE_DIR, f'log/{timestamp}_{b}.log')
@@ -175,7 +184,7 @@ register_parallel_backend('ipyparallel',
                           lambda: IPythonParallelBackend(view=bview))
 
 ps.print_save(f"\nSetup:")
-ps.print_save(f"b: {b}, db: {db}, sc: {sc}, ec: {ec}, f: {f}, m: {m}, t: {t}, scoring: {scoring}, cal: {cal_method}")
+ps.print_save(f"b: {b}, db: {db}, sc: {sc}, ec: {ec}, f: {f}, m: {m}, t: {t}, scoring: {scoring}, cal: {cal_str}")
 
 # --- LOAD DATA ---
 
@@ -211,25 +220,38 @@ y_n_cols = y.shape[1]
 
 if y_n_cols > 1:
     # -- Multi label split --
-
-    # Initial train_val-test split (80% train_val, 20% test)
-    X_train_val, X_test, y_train_vals, y_tests, train_val_indices, test_indices = mt.multilabel_stratified_group_split(X, y, groups, test_size=0.2, random_state=seed)
-
-    groups_train_val = groups[train_val_indices]
-    groups_test = groups[test_indices]
-
-    # Split train_val into train and val for calibration (of whole dataset: 60% train, 20% validation)
-    X_train, X_val, y_trains, y_vals, train_indices, val_indices = mt.multilabel_stratified_group_split(X_train_val, y_train_vals, groups_train_val, test_size=0.20, random_state=seed)
-
-    groups_train = groups_train_val[train_indices]
-    groups_val = groups_train_val[val_indices]
-
-    ps.print_save(mt.stratification_report(y, y_trains, y_tests, y_val=y_vals, labels=label_names))
-
     # Choose the label to train on
     t_idx = label_names.index(t)
+
+    # If with calibration, create validation set for calibration
+    if calibration:
+        # Initial train_val-test split (80% train_val, 20% test)
+        X_train_val, X_test, y_train_vals, y_tests, train_val_indices, test_indices = mt.multilabel_stratified_group_split(X, y, groups, test_size=0.2, random_state=seed)
+
+        groups_train_val = groups[train_val_indices]
+        groups_test = groups[test_indices]
+
+        
+        # Split train_val into train and val for calibration (of whole dataset: 60% train, 20% validation)
+        X_train, X_val, y_trains, y_vals, train_indices, val_indices = mt.multilabel_stratified_group_split(X_train_val, y_train_vals, groups_train_val, test_size=0.20, random_state=seed)
+
+        groups_train = groups_train_val[train_indices]
+        groups_val = groups_train_val[val_indices]
+
+        ps.print_save(mt.stratification_report(y, y_trains, y_tests, y_val=y_vals, labels=label_names))
+
+        y_val = y_vals[:,t_idx]
+    else:
+        # Initial train-test split (80% train, 20% test)
+        X_train, X_test, y_trains, y_tests, train_indices, test_indices = mt.multilabel_stratified_group_split(X, y, groups, test_size=0.2, random_state=seed)
+
+        groups_train = groups[train_indices]
+        groups_test = groups[test_indices]
+
+        ps.print_save(mt.stratification_report(y, y_trains, y_tests, labels=label_names))
+
+    
     y_train = y_trains[:,t_idx]
-    y_val = y_vals[:,t_idx]
     y_test = y_tests[:,t_idx]
 else:
     # -- Single label split --
@@ -237,23 +259,29 @@ else:
     # Convert single column y to 1D array
     y = y.ravel()
 
-    # Initial train_val-test split (80% train_val, 20% test)
-    cv_split = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=seed)
-    train_val_idx, test_idx = next(cv_split.split(X, y, groups))
-    X_train_val, X_test, y_train_val, y_test = X[train_val_idx], X[test_idx], y[train_val_idx], y[test_idx]
-    groups_train_val, groups_test = groups[train_val_idx], groups[test_idx]
+    if calibration:
+        # Initial train_val-test split (80% train_val, 20% test)
+        cv_split = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=seed)
+        train_val_idx, test_idx = next(cv_split.split(X, y, groups))
+        X_train_val, X_test, y_train_val, y_test = X[train_val_idx], X[test_idx], y[train_val_idx], y[test_idx]
+        groups_train_val, groups_test = groups[train_val_idx], groups[test_idx]
 
-    # Split train_val into train and val for calibration (of whole dataset: 60% train, 20% validation)
-    cv_train_val = StratifiedGroupKFold(n_splits=4, shuffle=True, random_state=seed)
-    train_idx, val_idx = next(cv_train_val.split(X_train_val, y_train_val, groups_train_val))
-    X_train, X_val, y_train, y_val = X_train_val[train_idx], X_train_val[val_idx], y_train_val[train_idx], y_train_val[val_idx]
-    groups_train, groups_val = groups_train_val[train_idx], groups_train_val[val_idx]
+        # Split train_val into train and val for calibration (of whole dataset: 60% train, 20% validation)
+        cv_train_val = StratifiedGroupKFold(n_splits=4, shuffle=True, random_state=seed)
+        train_idx, val_idx = next(cv_train_val.split(X_train_val, y_train_val, groups_train_val))
+        X_train, X_val, y_train, y_val = X_train_val[train_idx], X_train_val[val_idx], y_train_val[train_idx], y_train_val[val_idx]
+        groups_train, groups_val = groups_train_val[train_idx], groups_train_val[val_idx]
+    else:
+        # Initial train-test split (80% train, 20% test)
+        cv_split = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=seed)
+        train_idx, test_idx = next(cv_split.split(X, y, groups))
+        X_train, X_test, y_train, y_test = X[train_idx], X[test_idx], y[train_idx], y[test_idx]
+        groups_train, groups_test = groups[train_idx], groups[test_idx]
 
 # --- TRAINING ---
 
 # Variables to keep track of the best model and score
 reports = [None] * n_searches
-
 
 # Manually iterate over the outer StratifiedGroupKFold for GridSearchCV
 cv_gs = StratifiedGroupKFold(n_splits=n_searches, shuffle=True, random_state=seed)
@@ -318,45 +346,116 @@ best_estimator_.set_params(**best_params_)
 # Fit the best estimator on the whole training set
 best_estimator_.fit(X_train, y_train)
 
-# Calibrate the model using the validation set
-calibrated_estimator_ = CalibratedClassifierCV(best_estimator_, cv='prefit', method=cal_method)
-calibrated_estimator_.fit(X_val, y_val)
+final_estimator_ = best_estimator_
+
+if calibration:
+    # Calibrate the model using the validation set
+    calibrated_estimator_ = CalibratedClassifierCV(best_estimator_, cv='prefit', method=cal_method)
+    calibrated_estimator_.fit(X_val, y_val)
+    final_estimator_ = calibrated_estimator_
 
 # --- EVALUATION ---
 
-# Predict probabilities for the test set using the calibrated model
-y_probs_calibrated = calibrated_estimator_.predict_proba(X_test)[:, 1]
-y_preds_calibrated = calibrated_estimator_.predict(X_test)
-
 ps.print_save(f"\n{str(best_params_)}")
 
-ps.print_save("\nEvaluation Results:")
+# Evaluation test set using bootstrapping
 
-# Calculate the AUC-ROC score
-auc_roc = round(roc_auc_score(y_test, y_probs_calibrated), 3)
-ps.print_save(f"AUC-ROC score: {auc_roc:.3f}")
+# Initialize arrays to store bootstrapped metrics
+boot_auc_rocs = []
+boot_bal_accs = []
+boot_f1_scores = []
+boot_precisions = []
+boot_recalls = []
 
-# Calculate the balanced accuracy score
-bal_acc = round(balanced_accuracy_score(y_test, y_preds_calibrated), 3)
-ps.print_save(f"Balanced accuracy score: {bal_acc:.3f}")
+# Bootstrap loop
+print("\nBootstrapping...")
+for bs_idx in range(n_bootstrap):
+    if (bs_idx+1) % (n_bootstrap / 10) == 0:
+        print(f"Bootstrap {bs_idx+1}/{n_bootstrap}")
+    # Resample the test set with replacement
+    X_resampled, y_resampled = resample(X_test, y_test, replace=True, random_state=bs_idx, n_samples=len(y_test))
 
-# Calculate the accuracy score
-acc = round(accuracy_score(y_test, y_preds_calibrated), 3)
-ps.print_save(f"Accuracy score: {acc:.3f}")
+    # Predict probabilities and labels for the resampled test set
+    y_probs = final_estimator_.predict_proba(X_resampled)[:, 1]
+    y_preds = final_estimator_.predict(X_resampled)
 
-# Calculate the Brier score
-brier_score = round(brier_score_loss(y_test, y_probs_calibrated), 3)
-ps.print_save(f"Brier score: {brier_score:.3f}")
+    # Compute the evaluation metrics
+    fpr, tpr, _ = roc_curve(y_resampled, y_probs)
+    boot_auc_rocs.append(roc_auc_score(y_resampled, y_probs))
+    boot_bal_accs.append(balanced_accuracy_score(y_resampled, y_preds))
+    boot_f1_scores.append(f1_score(y_resampled, y_preds))
+    boot_precisions.append(precision_score(y_resampled, y_preds))
+    boot_recalls.append(recall_score(y_resampled, y_preds))
 
-# Classification report
-ps.print_save(f"\nClassification report:\n{classification_report(y_test, y_preds_calibrated)}")
+print("Bootstrapping done!")
 
-# Confusion matrix
-ps.print_save(f"Confusion matrix:\n{confusion_matrix(y_test, y_preds_calibrated)}")
+# Calculate the mean and standard deviation for each metric
+auc_roc_mean = round(np.mean(boot_auc_rocs), 3)
+auc_roc_std = round(np.std(boot_auc_rocs), 3)
+bal_acc_mean = round(np.mean(boot_bal_accs), 3)
+bal_acc_std = round(np.std(boot_bal_accs), 3)
+f1_mean = round(np.mean(boot_f1_scores), 3)
+f1_std = round(np.std(boot_f1_scores), 3)
+precision_mean = round(np.mean(boot_precisions), 3)
+precision_std = round(np.std(boot_precisions), 3)
+recall_mean = round(np.mean(boot_recalls), 3)
+recall_std = round(np.std(boot_recalls), 3)
+
+# Calculate the 95% confidence intervals for each metric
+alpha = 0.95
+auc_roc_ci = np.percentile(boot_auc_rocs, [(1 - alpha) / 2 * 100, (1 + alpha) / 2 * 100])
+bal_acc_ci = np.percentile(boot_bal_accs, [(1 - alpha) / 2 * 100, (1 + alpha) / 2 * 100])
+f1_ci = np.percentile(boot_f1_scores, [(1 - alpha) / 2 * 100, (1 + alpha) / 2 * 100])
+precision_ci = np.percentile(boot_precisions, [(1 - alpha) / 2 * 100, (1 + alpha) / 2 * 100])
+recall_ci = np.percentile(boot_recalls, [(1 - alpha) / 2 * 100, (1 + alpha) / 2 * 100])
+
+# Scoring metrics of original test set
+auc_roc = roc_auc_score(y_test, y_probs)
+bal_acc = balanced_accuracy_score(y_test, y_preds)
+f1 = f1_score(y_test, y_preds)
+precision = precision_score(y_test, y_preds)
+recall = recall_score(y_test, y_preds)
+
+# pvalue_auc_roc = ttest_1samp(boot_auc_rocs, popmean=auc_roc)[1]
+# pvalue_bal_acc = ttest_1samp(boot_bal_accs, popmean=bal_acc)[1]
+# pvalue_f1 = ttest_1samp(boot_f1_scores, popmean=f1)[1]
+# pvalue_precision = ttest_1samp(boot_precisions, popmean=precision)[1]
+# pvalue_recall = ttest_1samp(boot_recalls, popmean=recall)[1]
+
+pvalue_auc_roc = calculate_p_value(auc_roc, auc_roc_mean, auc_roc_std, n_bootstrap)
+pvalue_bal_acc = calculate_p_value(bal_acc, bal_acc_mean, bal_acc_std, n_bootstrap)
+pvalue_f1 = calculate_p_value(f1, f1_mean, f1_std, n_bootstrap)
+pvalue_precision = calculate_p_value(precision, precision_mean, precision_std, n_bootstrap)
+pvalue_recall = calculate_p_value(recall, recall_mean, recall_std, n_bootstrap)
+
+joblib.dump(boot_auc_rocs, 'boot_auc_rocs.joblib')
+joblib.dump(auc_roc, 'auc_roc.joblib')
+
+# Predict probabilities for the original test set
+y_probs = final_estimator_.predict_proba(X_test)[:, 1]
+y_preds = final_estimator_.predict(X_test)
+
+# Classification report of original tes tset
+ps.print_save(f"\nClassification report original test set:\n{classification_report(y_test, y_preds)}")
+
+# Confusion matrix of original test set
+ps.print_save(f"Confusion matrix original test set:\n{confusion_matrix(y_test, y_preds)}")
+
+
+
+# Print bootstrapped results
+ps.print_save("\nEvaluation bootstrap results (mean, SD, p-value):")
+
+ps.print_save(f"AUC-ROC score: ({auc_roc_mean:.3f}, {auc_roc_std:.3f}, {pvalue_auc_roc:.3f})")
+ps.print_save(f"Balanced accuracy score: ({bal_acc_mean:.3f}, {bal_acc_std:.3f}, {pvalue_bal_acc:.3f})")
+ps.print_save(f"F1 score: ({f1_mean:.3f}, {f1_std:.3f}, {pvalue_f1:.3f})")
+ps.print_save(f"Precision score: ({precision_mean:.3f}, {precision_std:.3f}, {pvalue_precision:.3f})")
+ps.print_save(f"Recall score: ({recall_mean:.3f}, {recall_std:.3f}, {pvalue_recall:.3f})")
 
 db_name = db.split("-")[0]
 # create the string to add to the main results file
-main_results_string = [timestamp,b,db_name,sc,ec,f,m,t,auc_roc,bal_acc, acc, brier_score]
+main_results_string = [timestamp, b, db_name, sc, ec, f, m, t]
+
 for i, x in enumerate(best_estimator_):
     if i == 1:
         if str(x) != 'passthrough':
@@ -364,7 +463,21 @@ for i, x in enumerate(best_estimator_):
     if i == 2:
         x = x.n_features_
     main_results_string.append(str(x).replace('\n', ''))
-main_results_string.append(cal_method)
+
+main_results_string.extend([
+    cal_str,
+    round(auc_roc, 3), round(auc_roc_mean, 3), round(auc_roc_std, 3), round(pvalue_auc_roc, 3),
+    round(auc_roc_ci[0], 3), round(auc_roc_ci[1], 3),
+    round(bal_acc, 3), round(bal_acc_mean, 3), round(bal_acc_std, 3), round(pvalue_bal_acc, 3),
+    round(bal_acc_ci[0], 3), round(bal_acc_ci[1], 3),
+    round(f1, 3), round(f1_mean, 3), round(f1_std, 3), round(pvalue_f1, 3),
+    round(f1_ci[0], 3), round(f1_ci[1], 3),
+    round(precision, 3), round(precision_mean, 3), round(precision_std, 3), round(pvalue_precision, 3),
+    round(precision_ci[0], 3), round(precision_ci[1], 3),
+    round(recall, 3), round(recall_mean, 3), round(recall_std, 3), round(pvalue_recall, 3),
+    round(recall_ci[0], 3), round(recall_ci[1], 3),
+])
+
 
 # --- SAVE RESULTS ---
 
@@ -381,15 +494,15 @@ with open(f"{FILE_DIR}/results/main_results.csv", 'a') as fw:
     w.writerow(main_results_string)
     fw.close()
 
+print("\nFiles saved.")
+
 # Print total duration of execution
 ps.print_save(f"\nTotal time: {round((time.time() - starttime),1)}s")
 
 if save_graphs:
     roc_name = f"{batch_path}/graphs/roc_curve-{file_prefix}.png"
-    cal_name = f"{batch_path}/graphs/cal_curve-{file_prefix}.png"
-
     # Calculate the ROC curve
-    fpr, tpr, _ = roc_curve(y_test, y_probs_calibrated)
+    fpr, tpr, _ = roc_curve(y_test, y_probs)
 
     # Plot the ROC curve
     plt.plot(fpr, tpr, label=f'AUC-ROC: {auc_roc:.3f}')
@@ -401,7 +514,8 @@ if save_graphs:
     plt.clf()  # Clear the current plot
 
     # Calibration curve
-    true_proportions, predicted_proportions = calibration_curve(y_test, y_probs_calibrated, n_bins=10)
+    cal_name = f"{batch_path}/graphs/cal_curve-{file_prefix}.png"
+    true_proportions, predicted_proportions = calibration_curve(y_test, y_probs, n_bins=10)
 
     # Plot the calibration curve
     plt.plot(predicted_proportions, true_proportions, marker='o', label='Calibrated model')
