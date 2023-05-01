@@ -444,13 +444,13 @@ ps.print_save(f"Confusion matrix original test set:\n{confusion_matrix(y_test, y
 
 
 # Print bootstrapped results
-ps.print_save("\nEvaluation bootstrap results (mean, SD, p-value):")
+ps.print_save("\nEvaluation bootstrap results (mean, SD, lower CI, higher CI):")
 
-ps.print_save(f"AUC-ROC score: ({auc_roc_mean:.3f}, {auc_roc_std:.3f}, {pvalue_auc_roc:.3f})")
-ps.print_save(f"Balanced accuracy score: ({bal_acc_mean:.3f}, {bal_acc_std:.3f}, {pvalue_bal_acc:.3f})")
-ps.print_save(f"F1 score: ({f1_mean:.3f}, {f1_std:.3f}, {pvalue_f1:.3f})")
-ps.print_save(f"Precision score: ({precision_mean:.3f}, {precision_std:.3f}, {pvalue_precision:.3f})")
-ps.print_save(f"Recall score: ({recall_mean:.3f}, {recall_std:.3f}, {pvalue_recall:.3f})")
+ps.print_save(f"AUC-ROC score: ({auc_roc_mean:.3f}, {auc_roc_std:.3f}, {auc_roc_ci[0]:.3f}, {auc_roc_ci[1]:.3f})")
+ps.print_save(f"Balanced accuracy: ({bal_acc_mean:.3f}, {bal_acc_std:.3f}, {bal_acc_ci[0]:.3f}, {bal_acc_ci[1]:.3f})")
+ps.print_save(f"F1 score: ({f1_mean:.3f}, {f1_std:.3f}, {f1_ci[0]:.3f}, {f1_ci[1]:.3f})")
+ps.print_save(f"Precision: ({precision_mean:.3f}, {precision_std:.3f}, {precision_ci[0]:.3f}, {precision_ci[1]:.3f})")
+ps.print_save(f"Recall: ({recall_mean:.3f}, {recall_std:.3f}, {recall_ci[0]:.3f}, {recall_ci[1]:.3f})")
 
 db_name = db.split("-")[0]
 # create the string to add to the main results file
