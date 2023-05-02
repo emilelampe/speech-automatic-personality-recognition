@@ -96,6 +96,9 @@ parser.add_argument("-e", "--endcutoff", default=str(ec),
 parser.add_argument("--timestamp", default=timestamp,
                     help="Timestamp in format YYMMDD_hhmm, used for logging batches")
 
+parser.add_argument("--scoring", default=scoring,
+                    help="Scoring metric for training")
+
 # Overwrite config values with argument values
 args = parser.parse_args()
 profile = args.profile
@@ -110,6 +113,7 @@ ec = args.endcutoff
 sc = float(sc)
 ec = float(ec)
 timestamp = args.timestamp
+scoring = args.scoring
 
 # Define index of labels and features after final database selection
 begin_col_labels = label_feature_indexes[db][0]
@@ -140,7 +144,7 @@ if calibration:
 else:
     cal_str = "no_cal"
 
-file_prefix = f"{timestamp}-{b}-{db}-{sc}-{ec}-{m}-{f}-{t}-{cal_str}".replace(".","_")
+file_prefix = f"{timestamp}-{b}-{db}-{scoring}-{sc}-{ec}-{m}-{f}-{t}-{cal_str}".replace(".","_")
 
 
 logfilename = os.path.join(
@@ -389,6 +393,9 @@ for bs_idx in range(n_bootstrap):
 
 print("Bootstrapping done!")
 
+joblib.dump(boot_auc_rocs, 'auc_rocs.pkl')
+joblib.dump(boot_bal_accs, 'bal_accs.pkl')
+
 # Calculate the mean and standard deviation for each metric
 auc_roc_mean = round(np.mean(boot_auc_rocs), 3)
 auc_roc_std = round(np.std(boot_auc_rocs), 3)
@@ -409,6 +416,10 @@ f1_ci = np.percentile(boot_f1_scores, [(1 - alpha) / 2 * 100, (1 + alpha) / 2 * 
 precision_ci = np.percentile(boot_precisions, [(1 - alpha) / 2 * 100, (1 + alpha) / 2 * 100])
 recall_ci = np.percentile(boot_recalls, [(1 - alpha) / 2 * 100, (1 + alpha) / 2 * 100])
 
+# Predict probabilities for the original test set
+y_probs = final_estimator_.predict_proba(X_test)[:, 1]
+y_preds = final_estimator_.predict(X_test)
+
 # Scoring metrics of original test set
 auc_roc = roc_auc_score(y_test, y_probs)
 bal_acc = balanced_accuracy_score(y_test, y_preds)
@@ -416,31 +427,11 @@ f1 = f1_score(y_test, y_preds)
 precision = precision_score(y_test, y_preds)
 recall = recall_score(y_test, y_preds)
 
-# pvalue_auc_roc = ttest_1samp(boot_auc_rocs, popmean=auc_roc)[1]
-# pvalue_bal_acc = ttest_1samp(boot_bal_accs, popmean=bal_acc)[1]
-# pvalue_f1 = ttest_1samp(boot_f1_scores, popmean=f1)[1]
-# pvalue_precision = ttest_1samp(boot_precisions, popmean=precision)[1]
-# pvalue_recall = ttest_1samp(boot_recalls, popmean=recall)[1]
-
-pvalue_auc_roc = calculate_p_value(auc_roc, auc_roc_mean, auc_roc_std, n_bootstrap)
-pvalue_bal_acc = calculate_p_value(bal_acc, bal_acc_mean, bal_acc_std, n_bootstrap)
-pvalue_f1 = calculate_p_value(f1, f1_mean, f1_std, n_bootstrap)
-pvalue_precision = calculate_p_value(precision, precision_mean, precision_std, n_bootstrap)
-pvalue_recall = calculate_p_value(recall, recall_mean, recall_std, n_bootstrap)
-
-joblib.dump(boot_auc_rocs, 'boot_auc_rocs.joblib')
-joblib.dump(auc_roc, 'auc_roc.joblib')
-
-# Predict probabilities for the original test set
-y_probs = final_estimator_.predict_proba(X_test)[:, 1]
-y_preds = final_estimator_.predict(X_test)
-
 # Classification report of original tes tset
 ps.print_save(f"\nClassification report original test set:\n{classification_report(y_test, y_preds)}")
 
 # Confusion matrix of original test set
 ps.print_save(f"Confusion matrix original test set:\n{confusion_matrix(y_test, y_preds)}")
-
 
 
 # Print bootstrapped results
@@ -465,16 +456,16 @@ for i, x in enumerate(best_estimator_):
     main_results_string.append(str(x).replace('\n', ''))
 
 main_results_string.extend([
-    cal_str,
-    round(auc_roc, 3), round(auc_roc_mean, 3), round(auc_roc_std, 3), round(pvalue_auc_roc, 3),
+    cal_str, scoring,
+    round(auc_roc, 3), round(auc_roc_mean, 3), round(auc_roc_std, 3),
     round(auc_roc_ci[0], 3), round(auc_roc_ci[1], 3),
-    round(bal_acc, 3), round(bal_acc_mean, 3), round(bal_acc_std, 3), round(pvalue_bal_acc, 3),
+    round(bal_acc, 3), round(bal_acc_mean, 3), round(bal_acc_std, 3),
     round(bal_acc_ci[0], 3), round(bal_acc_ci[1], 3),
-    round(f1, 3), round(f1_mean, 3), round(f1_std, 3), round(pvalue_f1, 3),
+    round(f1, 3), round(f1_mean, 3), round(f1_std, 3),
     round(f1_ci[0], 3), round(f1_ci[1], 3),
-    round(precision, 3), round(precision_mean, 3), round(precision_std, 3), round(pvalue_precision, 3),
+    round(precision, 3), round(precision_mean, 3), round(precision_std, 3),
     round(precision_ci[0], 3), round(precision_ci[1], 3),
-    round(recall, 3), round(recall_mean, 3), round(recall_std, 3), round(pvalue_recall, 3),
+    round(recall, 3), round(recall_mean, 3), round(recall_std, 3),
     round(recall_ci[0], 3), round(recall_ci[1], 3),
 ])
 

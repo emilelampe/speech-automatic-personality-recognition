@@ -25,8 +25,9 @@ traits = [config.t]
 start_cutoffs = [config.sc]
 end_cutoffs = [config.ec]
 cal_methods = [config.cal_method]
+scoring = [config.scoring]
 
-# --- HPC PARAMETER GRID---
+# --- HPC GRID---
 # # Overwrite default values
 databases = ['spc-egemaps.pkl']
 featuresets = ['e']
@@ -35,6 +36,7 @@ models = ['svm_rbf', 'rf', 'knn']
 traits = ['e', 'a', 'c', 'n', 'o']
 # traits = ['e']
 cal_methods = ['isotonic', 'sigmoid']
+scoring = ['roc_auc', 'balanced_accuracy']
 
 # Define with what HPC config the batches should be run
 HPC_CONFIG = FILE_DIR + "/hpc_configs/run_short.sh"

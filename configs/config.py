@@ -46,8 +46,8 @@ t = 'Extraversion'
 sc = 0
 ec = 0
 
-# scoring metric
-scoring = 'roc_auc'
+# scoring metric ('balanced_accuracy', 'roc_auc', 'f1')
+scoring = 'balanced_accuracy'
 
 # if you want to save graphs
 save_graphs = False
@@ -62,7 +62,7 @@ calibration = False
 seed = 42
 
 # number of bootstrap samples
-n_bootstrap = 1000
+n_bootstrap = 100
 
 # number of GridSearch folds
 n_searches = 5
