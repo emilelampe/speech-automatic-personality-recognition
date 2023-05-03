@@ -70,6 +70,8 @@ sys.path.append(FILE_DIR)
 
 # Default random value for batch
 random_id = randint(1, 10000)
+# Default value for run
+run = 0
 
 # Default current time for timestamp
 starttime = time.time()
@@ -95,8 +97,9 @@ parser.add_argument("-e", "--endcutoff", default=str(ec),
                     help="The maximum length of a sample")
 parser.add_argument("--timestamp", default=timestamp,
                     help="Timestamp in format YYMMDD_hhmm, used for logging batches")
-
 parser.add_argument("--scoring", default=scoring,
+                    help="Scoring metric for training")
+parser.add_argument("--run", default=run,
                     help="Scoring metric for training")
 
 # Overwrite config values with argument values
@@ -114,6 +117,7 @@ sc = float(sc)
 ec = float(ec)
 timestamp = args.timestamp
 scoring = args.scoring
+run = args.run
 
 # Define index of labels and features after final database selection
 begin_col_labels = label_feature_indexes[db][0]
@@ -144,7 +148,8 @@ if calibration:
 else:
     cal_str = "no_cal"
 
-file_prefix = f"{timestamp}-{b}-{db}-{scoring}-{sc}-{ec}-{m}-{f}-{t}-{cal_str}".replace(".","_")
+# file_prefix = f"{timestamp}-{b}-{db}-{scoring}-{sc}-{ec}-{m}-{f}-{t}-{cal_str}".replace(".","_")
+file_prefix = f"{b}-{run}"
 
 
 logfilename = os.path.join(
@@ -393,9 +398,6 @@ for bs_idx in range(n_bootstrap):
 
 print("Bootstrapping done!")
 
-joblib.dump(boot_auc_rocs, 'auc_rocs.pkl')
-joblib.dump(boot_bal_accs, 'bal_accs.pkl')
-
 # Calculate the mean and standard deviation for each metric
 auc_roc_mean = round(np.mean(boot_auc_rocs), 3)
 auc_roc_std = round(np.std(boot_auc_rocs), 3)
@@ -445,7 +447,7 @@ ps.print_save(f"Recall: ({recall_mean:.3f}, {recall_std:.3f}, {recall_ci[0]:.3f}
 
 db_name = db.split("-")[0]
 # create the string to add to the main results file
-main_results_string = [timestamp, b, db_name, sc, ec, f, m, t]
+main_results_string = [timestamp, b, run, db_name, sc, ec, f, m, t]
 
 for i, x in enumerate(best_estimator_):
     if i == 1:
