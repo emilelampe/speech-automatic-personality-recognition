@@ -4,7 +4,48 @@ import re
 import contextlib
 from sklearn.model_selection import StratifiedGroupKFold
 from scipy.stats import norm
+from sklearn.metrics import make_scorer, balanced_accuracy_score
 
+def calculate_median_labels(df, begin_labels_col, begin_features_col):
+    temp_df = pd.merge(df['Group'], df.iloc[:,begin_labels_col:begin_features_col], left_index=True, right_index=True)
+    temp_df = temp_df.drop_duplicates('Group').sort_values('Group').reset_index(drop=True)
+    medians_greater_equal = (temp_df.iloc[:,1:] >= temp_df.iloc[:,1:].median()).astype('int')
+    medians_greater = (temp_df.iloc[:,1:] > temp_df.iloc[:,1:].median()).astype('int')
+    median_greater_equal_scores = pd.merge(temp_df['Group'], medians_greater_equal, left_index=True, right_index=True)
+    median_greater_scores = pd.merge(temp_df['Group'], medians_greater, left_index=True, right_index=True)
+    labels = median_greater_equal_scores.columns.values[1:]
+    merged = pd.DataFrame(median_greater_scores['Group'].copy())
+    for l in labels:
+        one_greater_equal = (median_greater_equal_scores[l] == 1).sum()
+        zero_greater_equal = (median_greater_equal_scores[l] == 0).sum()
+        minc_greater_equal = min(one_greater_equal, zero_greater_equal)
+        majc_greater_equal = max(one_greater_equal, zero_greater_equal)
+        one_greater = (median_greater_scores[l] == 1).sum()
+        zero_greater = (median_greater_scores[l] == 0).sum()
+        minc_greater = min(one_greater, zero_greater)
+        majc_greater = max(one_greater, zero_greater)
+        r1 = minc_greater_equal / majc_greater_equal
+        r2 = minc_greater / majc_greater
+        if r1 > r2:
+            print(f"{l}, r1: {round(r1, 3)}, r2: {round(r2, 3)}, so r1: greater or equal")
+            
+            merged[l] = median_greater_equal_scores[l].copy()
+
+        else:
+            print(f"{l}, r1: {round(r1, 3)}, r2: {round(r2, 3)}, so r2: only greater than")
+
+            merged[l] = median_greater_scores[l].copy()
+    final = df.copy()
+    for l in labels:
+        final = final.drop(l, axis=1)
+    final = final.merge(merged, on='Group')
+    reversed_labels = list(labels)
+    reversed_labels.reverse()
+    for l in reversed_labels:
+        col = final.pop(l)
+        final.insert(begin_labels_col, l, col)
+    
+    return final
 
 
 def merge_cv_results(cv_results_list):
@@ -63,7 +104,12 @@ def merge_cv_results(cv_results_list):
 
     final_df['rank_test_score'] = final_df['rank_test_score'].astype(int)
 
-    final_df = final_df.sort_values(by="rank_test_score", ascending=True, ignore_index=True)
+    # Custom scorer that takes standard deviation into account
+    final_df['combined_test_score'] = final_df['mean_test_score'] - 0.5 * final_df['std_test_score']
+
+    # Select the first row to take std_dev into account
+    final_df = final_df.sort_values(by="combined_test_score", ascending=False, ignore_index=True)
+    # final_df = final_df.sort_values(by="rank_test_score", ascending=True, ignore_index=True)
 
     return final_df
 

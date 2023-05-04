@@ -15,6 +15,7 @@ results/*
 !data/spc-egemaps-average.pkl
 !data/single_label_example_dataset.pkl
 data/nsc-compare.pkl
+data/own_raw-egemaps.pkl
 
 # Ignore notebooks
 ipynb

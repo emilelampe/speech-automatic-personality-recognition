@@ -20,24 +20,33 @@ from sklearn.decomposition import PCA
 # database to use
 # For single label example dataset: 'single_label_example_dataset.pkl' (begin_col_labels = 2, begin_col_features = 3)
 # Example from https://archive.ics.uci.edu/ml/machine-learning-databases/spambase/spambase.data
-db = "own-egemaps.pkl"
+db = "spc-egemaps.pkl"
 # db = "nsc-egemaps.pkl"
 
 # Indexes where the labels start and where the features start '(label_idx, feature_idx)'
 label_feature_indexes = {
     'single_label_example_dataset.pkl': (2, 3),
-    'spc-egemaps.pkl': (2, 8),
-    'nsc-egemaps.pkl': (4, 10),
-    'own-egemaps.pkl': (3, 9),
-    'own_combined-egemaps.pkl': (3, 9)
+    'spc-egemaps.pkl': (3, 8),
+    'nsc-egemaps.pkl': (5, 10),
+    'own-egemaps.pkl': (4, 9),
+    'own_combined-egemaps.pkl': (4, 9)
 }
+
+# Columns to include with stratified train/test split, but delete afterwards
+# For example only 'Gender' column, set n_metadata_cols to 1
+# Metadata columns must be place directly before the label columns
+n_metadata_cols = 1
+
+# Choose to only include one gender in the data ('both', 'male', 'female')
+# Gender column must be called 'Gender', 'male' = 1, 'female' = 0
+gender = 'both'
 
 # Feature set ('egemaps', 'compare')
 f = 'egemaps'
 
 # Model to use ('svm_rbf', 'knn', 'rf', 'svm_l')
 # m = 'svm_rbf'
-m = 'rf'
+m = 'svm_rbf'
 
 # Label column to choose in case of multi-label dataset
 t = 'Extraversion'
@@ -108,17 +117,17 @@ model_pars = {
     'svm_rbf': {
         'clf': [SVC(random_state=seed, probability=True)],
         'clf__kernel': ['rbf'],
-        'clf__C': C_range,
-        # 'clf__C': [1, 10, 100, 1000],
-        'clf__gamma': gamma_range,
-        # 'clf__gamma': [0.1, 0.01, 0.001, 0.0001, 0.0001]
+        # 'clf__C': C_range,
+        'clf__C': [1, 10, 100],
+        # 'clf__gamma': gamma_range,
+        'clf__gamma': [0.1, 0.01, 0.001]
     },
     # Random Forest
     'rf':
     {
         'clf': [RandomForestClassifier(random_state=seed, n_jobs=1)],
         # 'clf__n_estimators': [10, 100, 250, 500, 1000],
-        'clf__n_estimators': [100, 250, 500, 1000],
+        'clf__n_estimators': [100, 250],
         # 'clf__max_depth': max_depth_range
         'clf__max_depth': [1, 2, 4, None]
     },

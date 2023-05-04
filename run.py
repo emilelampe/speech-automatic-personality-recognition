@@ -62,6 +62,8 @@ step_rfecv = config.step_rfecv
 calibration = config.calibration
 cal_method = config.cal_method
 n_bootstrap = config.n_bootstrap
+n_metadata_cols = config.n_metadata_cols
+gender = config.gender
 
 # --- ARGUMENTS SETTINGS ---
 
@@ -200,6 +202,13 @@ ps.print_save(f"b: {b}, db: {db}, sc: {sc}, ec: {ec}, f: {f}, m: {m}, t: {t}, sc
 # load dataset
 full_df = pd.read_pickle(f"{FILE_DIR}/data/{db}")
 
+if gender == 'male':
+    full_df = full_df[full_df['Gender'] == 1]
+elif gender == 'female':
+    full_df = full_df[full_df['Gender'] == 0]
+else:
+    gender = 'both'
+
 # adjust time cutoff
 if sc != 0 and 'Length' in full_df.columns:
     full_df = full_df[(full_df['Length'] >= sc)]
@@ -208,7 +217,7 @@ if ec != 0 and 'Length' in full_df.columns:
 
 # define X and y
 X = full_df.iloc[:, begin_col_features:]
-y = full_df.iloc[:,begin_col_labels:begin_col_features]
+y = full_df.iloc[:,begin_col_labels - n_metadata_cols:begin_col_features]
 
 # define feature_names, label_names and groups
 feature_names = list(X.columns.values)
@@ -225,7 +234,7 @@ ps.print_save(f"\nTotal number of samples: {len(y[:,0])}")
 # --- SPLIT TRAIN, VAL, TEST ---
 
 # Number of labels
-y_n_cols = y.shape[1]
+y_n_cols = y.shape[n_metadata_cols]
 
 if y_n_cols > 1:
     # -- Multi label split --
@@ -338,6 +347,12 @@ cv_results_ = merge_cv_results(reports)
 # Get the best parameters
 best_params_ = cv_results_.loc[cv_results_.index[0],'params']
 
+cv_combined_test_score = cv_results_.loc[cv_results_.index[0],'combined_test_score']
+cv_mean_test_score = cv_results_.loc[cv_results_.index[0],'mean_test_score']
+cv_std_test_score = cv_results_.loc[cv_results_.index[0],'std_test_score']
+cv_rank_test_score = cv_results_.loc[cv_results_.index[0],'rank_test_score']
+
+
 # create a StratifiedGroupKFold object for the best estimator RFECV
 cv_rfecv_best = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=seed)
 
@@ -435,6 +450,11 @@ ps.print_save(f"\nClassification report original test set:\n{classification_repo
 # Confusion matrix of original test set
 ps.print_save(f"Confusion matrix original test set:\n{confusion_matrix(y_test, y_preds)}")
 
+ps.print_save("\nTraining set CV best model:")
+ps.print_save(f"Best combined score: {round(cv_combined_test_score, 3)}")
+ps.print_save(f"Best mean score: {round(cv_mean_test_score, 3)}")
+ps.print_save(f"Best std score: {round(cv_std_test_score, 3)}")
+ps.print_save(f"Rank of mean score: {cv_rank_test_score}")
 
 # Print bootstrapped results
 ps.print_save("\nEvaluation bootstrap results (mean, SD, lower CI, higher CI):")
@@ -459,6 +479,7 @@ for i, x in enumerate(best_estimator_):
 
 main_results_string.extend([
     cal_str, scoring,
+    round(cv_combined_test_score, 3), round(cv_mean_test_score, 3), round(cv_std_test_score, 3), cv_rank_test_score,
     round(auc_roc, 3), round(auc_roc_mean, 3), round(auc_roc_std, 3),
     round(auc_roc_ci[0], 3), round(auc_roc_ci[1], 3),
     round(bal_acc, 3), round(bal_acc_mean, 3), round(bal_acc_std, 3),
