@@ -26,25 +26,27 @@ start_cutoffs = [config.sc]
 end_cutoffs = [config.ec]
 cal_methods = [config.cal_method]
 scoring_methods = [config.scoring]
+pca_methods = [config.pca]
 
 # --- HPC GRID---
 # # Overwrite default values
-databases = ['spc-egemaps.pkl']
+databases = ['spc-egemaps.pkl', 'own_combined-egemaps.pkl']
 featuresets = ['e']
 models = ['svm_rbf', 'rf', 'knn']
 # models = ['svm_rbf']
 traits = ['e', 'a', 'c', 'n', 'o']
 # traits = ['e']
 cal_methods = ['no_cal']
-scoring = ['roc_auc', 'balanced_accuracy']
+scoring_methods = ['roc_auc', 'balanced_accuracy']
 start_cutoffs = [0]
 end_cutoffs = [0]
+pca_methods = ['passthrough', '95', '99']
 
-# Define with what HPC config the batches should be run
+# # Define with what HPC config the batches should be run
 HPC_CONFIG = FILE_DIR + "/hpc_configs/run_short.sh"
 
 # Create combinations of run parameters
-combinations = [[d, f, m, t, s, e, c, scoring, timestamp, b] for d, f, m, t, s, e, c, scoring in itertools.product(databases, featuresets, models, traits, start_cutoffs, end_cutoffs, cal_methods, scoring_methods)]
+combinations = [[d, f, m, t, s, e, c, scoring, pca, timestamp, b] for d, f, m, t, s, e, c, scoring, pca in itertools.product(databases, featuresets, models, traits, start_cutoffs, end_cutoffs, cal_methods, scoring_methods, pca_methods)]
 
 # Run combinations on HPC
 for run, combination in enumerate(combinations):
@@ -56,16 +58,15 @@ for run, combination in enumerate(combinations):
     e = combination[5]
     c = combination[6]
     scoring = combination[7]
+    pca = combination[8]
     # read the file into a list of lines
     lines = open(HPC_CONFIG, 'r').readlines()
 
     # now edit the last line of the list of lines
-    addition = f' -b {b} --run {run} -d {d} -f {f} -m {m} -t {t} --cal-method {c} -s {str(s)} -e {str(e)} --timestamp {timestamp} --scoring {scoring}'
+    addition = f' -b {b} --run {run} -d {d} -f {f} -m {m} -t {t} --cal-method {c} -s {str(s)} -e {str(e)} --timestamp {timestamp} --scoring {scoring} --pca {pca}'
     print(addition)
     new_last_line = (lines[-1].rstrip() + addition)
     lines[-1] = new_last_line
-
-    # filename = f'{FILE_DIR}/hpc_configs/sh/run-{timestamp}-{b}-{scoring}-{d.replace(".","_")}-{f}-{m}-{t}-{str(s).replace(".","_")}-{str(e).replace(".","_")}-{c}.sh'
 
     filename = f"{FILE_DIR}/hpc_configs/sh/run-{timestamp}-{b}-{run}.sh"
 

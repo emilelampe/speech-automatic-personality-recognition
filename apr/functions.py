@@ -48,14 +48,15 @@ def calculate_median_labels(df, begin_labels_col, begin_features_col):
     return final
 
 
-def merge_cv_results(cv_results_list):
-    '''Takes a list of 5 cv_results_ DataFrames and returns a single merged DataFrame as if 5-fold GridSearchCV was performed'''
-    assert len(cv_results_list) == 5, "There must be 5 cv_results_ DataFrames."
+def merge_cv_results(cv_results_list, scoring_metrics, main_metric):
+    '''Takes a list of k cv_results_ DataFrames and returns a single merged DataFrame as if k-fold GridSearchCV was performed'''
+    # assert len(cv_results_list) == 5, "There must be 5 cv_results_ DataFrames."
 
     # Combine DataFrames and rename split0_test_score columns
     for i, df in enumerate(cv_results_list):
         df = df.copy()
-        df.rename(columns={"split0_test_score": f"split{i}_test_score"}, inplace=True)
+        for j in scoring_metrics:
+            df.rename(columns={f"split0_test_{j}": f"split{i}_test_{j}"}, inplace=True)
         cv_results_list[i] = df
 
     combined_df = pd.concat(cv_results_list, ignore_index=True)
@@ -69,13 +70,12 @@ def merge_cv_results(cv_results_list):
         "std_fit_time": "mean",
         "mean_score_time": "mean",
         "std_score_time": "mean",
-        "params": "first",
-        "split0_test_score": "first",
-        "split1_test_score": "first",
-        "split2_test_score": "first",
-        "split3_test_score": "first",
-        "split4_test_score": "first",
+        "params": "first"
     }
+
+    for i in range(len(cv_results_list)):
+        for j in scoring_metrics:
+            aggregate_dict[f"split{i}_test_{j}"] = "first"
 
     # Add columns with specific parameters to aggregation dictionary
     param_cols = [col for col in combined_df.columns if col.startswith("param_")]
@@ -86,29 +86,38 @@ def merge_cv_results(cv_results_list):
     grouped_df = combined_df.groupby("params_str", as_index=False).agg(aggregate_dict)
 
     # Calculate mean_test_score and std_test_score
-    test_score_columns = [f"split{i}_test_score" for i in range(5)]
-    grouped_df["mean_test_score"] = grouped_df[test_score_columns].mean(axis=1)
-    grouped_df["std_test_score"] = grouped_df[test_score_columns].std(axis=1)
+    for j in scoring_metrics:
+        test_score_columns = [f"split{i}_test_{j}" for i in range(5)]
+        grouped_df[f"mean_test_{j}"] = grouped_df[test_score_columns].mean(axis=1)
+        grouped_df[f"std_test_{j}"] = grouped_df[test_score_columns].std(axis=1)
 
     # Calculate rank_test_score
-    grouped_df["rank_test_score"] = grouped_df["mean_test_score"].rank(ascending=False, method="min")
+    grouped_df["rank_test_score"] = grouped_df[f"mean_test_{main_metric}"].rank(ascending=False, method="min")
 
     # Keep only the columns we need and return the result
     final_columns = [
         "mean_fit_time", "std_fit_time", "mean_score_time", "std_score_time",
-        "params"] + param_cols + ["split0_test_score", "split1_test_score", "split2_test_score",
-        "split3_test_score", "split4_test_score", "mean_test_score",
-        "std_test_score", "rank_test_score"
-    ]
+        "params"] + param_cols
+    
+    for j in scoring_metrics:
+        for i in range(len(cv_results_list)):
+            final_columns.append(f"split{i}_test_{j}")
+        final_columns.append(f"mean_test_{j}")
+        final_columns.append(f"std_test_{j}")
+    final_columns.append("rank_test_score")
+
     final_df = grouped_df.loc[:, final_columns]
 
     final_df['rank_test_score'] = final_df['rank_test_score'].astype(int)
 
     # Custom scorer that takes standard deviation into account
-    final_df['combined_test_score'] = final_df['mean_test_score'] - 0.5 * final_df['std_test_score']
+    final_df[f'combined_test_{main_metric}'] = final_df[f'mean_test_{main_metric}'] - 0.5 * final_df[f'std_test_{main_metric}']
+
+    final_df["rank_test_combined"] = final_df[f"combined_test_{main_metric}"].rank(ascending=False, method="min")
+    final_df['rank_test_combined'] = final_df['rank_test_combined'].astype(int)
 
     # Select the first row to take std_dev into account
-    final_df = final_df.sort_values(by="combined_test_score", ascending=False, ignore_index=True)
+    final_df = final_df.sort_values(by=f"combined_test_{main_metric}", ascending=False, ignore_index=True)
     # final_df = final_df.sort_values(by="rank_test_score", ascending=True, ignore_index=True)
 
     return final_df

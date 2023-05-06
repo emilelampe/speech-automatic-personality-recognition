@@ -10,6 +10,9 @@ results/*
 !results/230427_1137_8197
 !main_results.csv
 
+# ignore analysis folder
+analysis
+
 # ignore data except SPC and single labele example
 # data/*
 !data/spc-egemaps-average.pkl
@@ -21,3 +24,5 @@ data/own_raw-egemaps.pkl
 ipynb
 run_notebook.ipynb
 test.ipynb
+test2.ipynb
+keep_test.ipynb

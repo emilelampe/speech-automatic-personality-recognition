@@ -51,11 +51,12 @@ sc = config.sc
 ec = config.ec
 label_feature_indexes = config.label_feature_indexes
 scoring = config.scoring
+scoring_metrics = config.scoring_metrics
 save_graphs = config.save_graphs
 save_model = config.save_model
 seed = config.seed
 n_searches = config.n_searches
-pre_pars = config.pre_pars
+# pre_pars = config.pre_pars
 model_pars = config.model_pars
 clf_rfecv = config.clf_rfecv
 step_rfecv = config.step_rfecv
@@ -64,6 +65,7 @@ cal_method = config.cal_method
 n_bootstrap = config.n_bootstrap
 n_metadata_cols = config.n_metadata_cols
 gender = config.gender
+pca = config.pca
 
 # --- ARGUMENTS SETTINGS ---
 
@@ -103,6 +105,8 @@ parser.add_argument("--scoring", default=scoring,
                     help="Scoring metric for training")
 parser.add_argument("--run", default=run,
                     help="Scoring metric for training")
+parser.add_argument("--pca", default=str(pca),
+                    help="PCA to use")
 
 # Overwrite config values with argument values
 args = parser.parse_args()
@@ -120,6 +124,14 @@ ec = float(ec)
 timestamp = args.timestamp
 scoring = args.scoring
 run = args.run
+pca = str(args.pca)
+
+if pca == '99':
+    pca = PCA(0.99)
+elif pca == '95':
+    pca = PCA(0.95)
+else:
+    pca = 'passthrough'
 
 # Define index of labels and features after final database selection
 begin_col_labels = label_feature_indexes[db][0]
@@ -140,7 +152,7 @@ if db.lower() in database_dict.keys():
     db = database_dict[db.lower()]
 
 # combine model and preprocessing parameters into one parameter grid
-model_pars[m].update(pre_pars)
+# model_pars[m].update(pre_pars)
 param_grid = model_pars[m]
 
 # --- SETUP MULTIPROCESSING, LOGGING AND PATHS ---
@@ -325,13 +337,13 @@ for idx, (train_idx_gs, test_idx_gs) in enumerate(StratifiedGroupKFold(n_splits=
     # Create the pipeline
     pipe = Pipeline([
         ('scaler', StandardScaler()),
-        ('pca', 'passthrough'),
+        ('pca', pca),
         ('feat_sel', RFECV(clf_rfecv, cv=list(cv_rfecv.split(X_train_gs, y_train_gs, groups_train_gs)), scoring=scoring, step=step_rfecv)),
         ('clf', SVC(kernel='rbf'))
     ],memory=cache)
 
     # Perform a Grid Search for the current fold
-    gs = GridSearchCV(pipe, param_grid, scoring=scoring, n_jobs=len(c), cv=cv_fold, error_score='raise', verbose=1)
+    gs = GridSearchCV(pipe, param_grid, scoring=scoring_metrics, n_jobs=len(c), cv=cv_fold, error_score='raise', verbose=1, refit=scoring)
 
     # run with multiprocessing
     with parallel_backend('ipyparallel'):
@@ -341,16 +353,23 @@ for idx, (train_idx_gs, test_idx_gs) in enumerate(StratifiedGroupKFold(n_splits=
 
     rmtree(cache)
 
+scoring_names = scoring_metrics.keys()
 # Combine the cv_results_ of the different folds
-cv_results_ = merge_cv_results(reports)
+cv_results_ = merge_cv_results(reports, scoring_metrics=scoring_names, main_metric=scoring)
 
 # Get the best parameters
 best_params_ = cv_results_.loc[cv_results_.index[0],'params']
 
-cv_combined_test_score = cv_results_.loc[cv_results_.index[0],'combined_test_score']
-cv_mean_test_score = cv_results_.loc[cv_results_.index[0],'mean_test_score']
-cv_std_test_score = cv_results_.loc[cv_results_.index[0],'std_test_score']
-cv_rank_test_score = cv_results_.loc[cv_results_.index[0],'rank_test_score']
+for x in scoring_names:
+    if x != scoring:
+        second_scoring = x
+
+cv_combined_test_score = cv_results_.loc[cv_results_.index[0],f'combined_test_{scoring}']
+cv_mean_test_main = cv_results_.loc[cv_results_.index[0],f'mean_test_{scoring}']
+cv_std_test_main = cv_results_.loc[cv_results_.index[0],f'std_test_{scoring}']
+cv_mean_test_second = cv_results_.loc[cv_results_.index[0],f'mean_test_{second_scoring}']
+cv_std_test_second = cv_results_.loc[cv_results_.index[0],f'std_test_{second_scoring}']
+cv_rank_test_score = cv_results_.loc[cv_results_.index[0],f'rank_test_score']
 
 
 # create a StratifiedGroupKFold object for the best estimator RFECV
@@ -359,7 +378,7 @@ cv_rfecv_best = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=seed
 # Create the best estimator pipeline
 best_estimator_ = Pipeline([
     ('scaler', StandardScaler()),
-    ('pca', PCA(n_components=None)),
+    ('pca', pca),
     ('feat_sel', RFECV(clf_rfecv, cv=list(cv_rfecv_best.split(X_train_gs, y_train_gs, groups_train_gs)), scoring=scoring)),
     ('clf', 'passthrough')
 ])
@@ -452,8 +471,8 @@ ps.print_save(f"Confusion matrix original test set:\n{confusion_matrix(y_test, y
 
 ps.print_save("\nTraining set CV best model:")
 ps.print_save(f"Best combined score: {round(cv_combined_test_score, 3)}")
-ps.print_save(f"Best mean score: {round(cv_mean_test_score, 3)}")
-ps.print_save(f"Best std score: {round(cv_std_test_score, 3)}")
+ps.print_save(f"Best mean score: {round(cv_mean_test_main, 3)}")
+ps.print_save(f"Best std score: {round(cv_std_test_main, 3)}")
 ps.print_save(f"Rank of mean score: {cv_rank_test_score}")
 
 # Print bootstrapped results
@@ -479,7 +498,7 @@ for i, x in enumerate(best_estimator_):
 
 main_results_string.extend([
     cal_str, scoring,
-    round(cv_combined_test_score, 3), round(cv_mean_test_score, 3), round(cv_std_test_score, 3), cv_rank_test_score,
+    round(cv_combined_test_score, 3), cv_rank_test_score, round(cv_mean_test_main, 3), round(cv_std_test_main, 3), round(cv_mean_test_second, 3), round(cv_std_test_second, 3),
     round(auc_roc, 3), round(auc_roc_mean, 3), round(auc_roc_std, 3),
     round(auc_roc_ci[0], 3), round(auc_roc_ci[1], 3),
     round(bal_acc, 3), round(bal_acc_mean, 3), round(bal_acc_std, 3),

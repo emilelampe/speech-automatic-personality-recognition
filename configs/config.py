@@ -2,6 +2,7 @@ import numpy as np
 from sklearn.calibration import LinearSVC
 from sklearn.discriminant_analysis import StandardScaler
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import balanced_accuracy_score, make_scorer, roc_auc_score
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.svm import SVC
 from sklearn.tree import DecisionTreeClassifier
@@ -55,8 +56,14 @@ t = 'Extraversion'
 sc = 0
 ec = 0
 
-# scoring metric ('balanced_accuracy', 'roc_auc', 'f1')
+# main scoring metric ('balanced_accuracy', 'roc_auc', 'f1')
 scoring = 'balanced_accuracy'
+
+# all scoring metrics
+scoring_metrics = {
+    'balanced_accuracy': make_scorer(balanced_accuracy_score),
+    'auc_roc': make_scorer(roc_auc_score, needs_proba=True)
+}
 
 # if you want to save graphs
 save_graphs = False
@@ -71,7 +78,7 @@ calibration = False
 seed = 42
 
 # number of bootstrap samples
-n_bootstrap = 100
+n_bootstrap = 10
 
 # number of GridSearch folds
 n_searches = 5
@@ -81,6 +88,9 @@ clf_rfecv = DecisionTreeClassifier(random_state=seed)
 
 # Calibration method
 cal_method = 'sigmoid'
+
+# PCA method ('passthrough' for no PCA, '95' for 95% variability, '0.99' for 99% variability)
+pca = 'passthrough'
 
 # # step size for RFECV
 step_rfecv = 1
@@ -100,11 +110,11 @@ max_depth_range = [int(x) for x in max_depth_range]
 max_depth_range.append(None)
 
 # Preprocessing parameters
-pre_pars = {
-        'scaler': [StandardScaler()],
-        # 'pca': [PCA(0.95), PCA(0.99), 'passthrough'],
-        'pca': ['passthrough']
-    }
+# pre_pars = {
+#         'scaler': [StandardScaler()],
+#         # 'pca': [PCA(0.95), PCA(0.99), 'passthrough'],
+#         'pca': ['passthrough']
+#     }
 
 # Model parameters
 model_pars = {
@@ -118,9 +128,9 @@ model_pars = {
         'clf': [SVC(random_state=seed, probability=True)],
         'clf__kernel': ['rbf'],
         # 'clf__C': C_range,
-        'clf__C': [1, 10, 100],
+        'clf__C': [1, 10],
         # 'clf__gamma': gamma_range,
-        'clf__gamma': [0.1, 0.01, 0.001]
+        'clf__gamma': [0.1, 0.01]
     },
     # Random Forest
     'rf':
