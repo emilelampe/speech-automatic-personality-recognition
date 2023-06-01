@@ -24,14 +24,32 @@ from sklearn.decomposition import PCA
 db = "spc-egemaps.pkl"
 # db = "nsc-egemaps.pkl"
 
-# Indexes where the labels start and where the features start '(label_idx, feature_idx)'
+# Info on the datasets:
+# - index of column where labels start
+# - index of column where features start
+# - whether the labels are raw personality scores and need to be binarized
+# - whether the dataset is REMDE or not
+# - whether the dataset is NSC or not
 label_feature_indexes = {
-    'single_label_example_dataset.pkl': (2, 3),
-    'spc-egemaps.pkl': (3, 8),
-    'nsc-egemaps.pkl': (5, 10),
-    'own-egemaps.pkl': (4, 9),
-    'own_combined-egemaps.pkl': (4, 9)
+    'single_label_example_dataset.pkl': (2, 3, False, False, False, 'egemaps'),
+    'spc-egemaps.pkl': (3, 8, False, False, False, 'egemaps'),
+    'spc-embeddings.pkl': (3, 8, False, False, False, 'embeddings'),
+    'nsc-egemaps.pkl': (5, 10, False, False, True, 'egemaps'),
+    # 'own-egemaps.pkl': (4, 9, False, True, False),
+    # 'own_combined-egemaps.pkl': (4, 9, False, True, False),
+    # 'own_combined_new-egemaps.pkl': (4, 9, False, True, False),
+    # 'own_combined_raw-egemaps.pkl': (4, 9, True, True, False),
+    # 'own_1015-egemaps.pkl': (4, 9, True, True, False),
+    'reduced-egemaps.pkl': (4, 9, True, True, False, 'egemaps'),
+    'noisy-egemaps.pkl': (4, 9, True, True, False, 'egemaps')
 }
+
+# For REMDE db: whether to leave out the speakers that were noisy by ear
+# Is only applicable to datasets that are set as REMDE above
+leave_out_noisy = True
+
+# For NSC db: whether to leave out the BFI-10 speakers
+leave_out_bfi10 = True
 
 # Columns to include with stratified train/test split, but delete afterwards
 # For example only 'Gender' column, set n_metadata_cols to 1
@@ -43,7 +61,7 @@ n_metadata_cols = 1
 gender = 'both'
 
 # Feature set ('egemaps', 'compare')
-f = 'egemaps'
+f = 'embeddings'
 
 # Model to use ('svm_rbf', 'knn', 'rf', 'svm_l')
 # m = 'svm_rbf'
@@ -62,7 +80,7 @@ scoring = 'balanced_accuracy'
 # all scoring metrics
 scoring_metrics = {
     'balanced_accuracy': make_scorer(balanced_accuracy_score),
-    'auc_roc': make_scorer(roc_auc_score, needs_proba=True)
+    'roc_auc': make_scorer(roc_auc_score, needs_proba=True)
 }
 
 # if you want to save graphs
@@ -78,7 +96,7 @@ calibration = False
 seed = 42
 
 # number of bootstrap samples
-n_bootstrap = 10
+n_bootstrap = 100
 
 # number of GridSearch folds
 n_searches = 5
@@ -87,10 +105,12 @@ n_searches = 5
 clf_rfecv = DecisionTreeClassifier(random_state=seed)
 
 # Calibration method
-cal_method = 'sigmoid'
+cal_method = 'no_cal'
 
 # PCA method ('passthrough' for no PCA, '95' for 95% variability, '0.99' for 99% variability)
 pca = 'passthrough'
+
+w_rfecv = False
 
 # # step size for RFECV
 step_rfecv = 1
@@ -128,9 +148,9 @@ model_pars = {
         'clf': [SVC(random_state=seed, probability=True)],
         'clf__kernel': ['rbf'],
         # 'clf__C': C_range,
-        'clf__C': [1, 10],
+        'clf__C': [10, 100],
         # 'clf__gamma': gamma_range,
-        'clf__gamma': [0.1, 0.01]
+        'clf__gamma': [0.01, 0.001]
     },
     # Random Forest
     'rf':

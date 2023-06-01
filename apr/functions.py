@@ -1,10 +1,18 @@
+import os
 import pandas as pd
 import numpy as np
 import re
 import contextlib
+from sklearn.discriminant_analysis import StandardScaler
 from sklearn.model_selection import StratifiedGroupKFold
 from scipy.stats import norm
 from sklearn.metrics import make_scorer, balanced_accuracy_score
+import matplotlib.pyplot as plt
+import librosa
+import librosa.display
+from scipy.io import wavfile
+import noisereduce as nr
+from pydub import AudioSegment
 
 def calculate_median_labels(df, begin_labels_col, begin_features_col):
     temp_df = pd.merge(df['Group'], df.iloc[:,begin_labels_col:begin_features_col], left_index=True, right_index=True)
@@ -47,6 +55,15 @@ def calculate_median_labels(df, begin_labels_col, begin_features_col):
     
     return final
 
+def normalize_speaker_data(df, speaker_column, feature_start_index):
+    for speaker in df[speaker_column].unique():
+        # filter data by speaker
+        speaker_indices = df[df[speaker_column] == speaker].index
+        scaler = StandardScaler()
+        
+        # only normalize feature columns
+        df.loc[speaker_indices, df.columns[feature_start_index:]] = scaler.fit_transform(df.loc[speaker_indices, df.columns[feature_start_index:]])
+    return df
 
 def merge_cv_results(cv_results_list, scoring_metrics, main_metric):
     '''Takes a list of k cv_results_ DataFrames and returns a single merged DataFrame as if k-fold GridSearchCV was performed'''
@@ -121,6 +138,24 @@ def merge_cv_results(cv_results_list, scoring_metrics, main_metric):
     # final_df = final_df.sort_values(by="rank_test_score", ascending=True, ignore_index=True)
 
     return final_df
+
+def show_audio_plot(file, title):
+    y, sr = librosa.load(file)
+    fig, ax = plt.subplots(nrows=1, sharex=True)
+    librosa.display.waveshow(y, sr=sr, ax=ax)
+    ax.set(title=title)
+    ax.label_outer()
+
+def noise_reduce_audio(path):
+    # load data
+    rate, data = wavfile.read(path)
+    # perform noise reduction
+    reduced_noise = nr.reduce_noise(y=data, sr=rate)
+    wavfile.write('temp_reduced.wav', rate, reduced_noise)
+    original = AudioSegment.from_file(file=path, format="wav")
+    reduced = AudioSegment.from_file(file='temp_reduced.wav', format="wav")
+    os.remove('temp_reduced.wav')
+    return original, reduced
 
 class PrintSaver():
     '''Both prints a message and saves it to a file.'''

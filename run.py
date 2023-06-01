@@ -19,6 +19,8 @@ from sklearn.feature_selection import RFECV
 from sklearn.svm import SVC, LinearSVC
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.pipeline import Pipeline
+from sklearn.base import clone
+from sklearn.model_selection import permutation_test_score
 from sklearn.metrics import accuracy_score, auc, brier_score_loss, classification_report, confusion_matrix, f1_score, precision_score, recall_score, roc_auc_score, roc_curve, balanced_accuracy_score
 import pandas as pd
 import json
@@ -44,7 +46,6 @@ from ipyparallel.joblib import IPythonParallelBackend
 # --- IMPORT CONFIG ---
 
 db = config.db
-f = config.f
 t = config.t
 m = config.m
 sc = config.sc
@@ -66,6 +67,24 @@ n_bootstrap = config.n_bootstrap
 n_metadata_cols = config.n_metadata_cols
 gender = config.gender
 pca = config.pca
+w_rfecv = config.w_rfecv
+leave_out_noisy = config.leave_out_noisy
+leave_out_bfi10 = config.leave_out_bfi10
+
+if leave_out_noisy:
+    leave_out_noisy = '1'
+else:
+    leave_out_noisy = '0'
+
+if leave_out_bfi10:
+    leave_out_bfi10 = '1'
+else:
+    leave_out_bfi10 = '0'
+
+if w_rfecv:
+    w_rfecv = '1'
+else:
+    w_rfecv = '0'
 
 # --- ARGUMENTS SETTINGS ---
 
@@ -89,8 +108,6 @@ parser.add_argument("-m", "--model", default=m,
                     help="The model with which you want to train")
 parser.add_argument("-t", "--trait", default=t,
                     help="The trait on which you want to train")
-parser.add_argument("-f", "--featureset", default=f,
-                    help="The feature set to use")
 parser.add_argument("-d", "--database", default=db, help="The database to train on")
 parser.add_argument("-b", "--batchid", default=str(random_id), help="The ID with which different searches can be grouped")
 parser.add_argument("--cal-method", default=cal_method,
@@ -107,13 +124,18 @@ parser.add_argument("--run", default=run,
                     help="Scoring metric for training")
 parser.add_argument("--pca", default=str(pca),
                     help="PCA to use")
+parser.add_argument("--leave-bfi10", default=leave_out_bfi10,
+                    help="Whether to leave out BFI-10 for NSC")
+parser.add_argument("--leave-noisy", default=leave_out_noisy,
+                    help="Whether to leave out very noisy for REMDE")
+parser.add_argument("--rfecv", default=w_rfecv,
+                    help="With RFECV or not")
 
 # Overwrite config values with argument values
 args = parser.parse_args()
 profile = args.profile
 m = args.model
 t = args.trait
-f = args.featureset
 db = args.database
 b = args.batchid
 cal_method = args.cal_method
@@ -125,17 +147,56 @@ timestamp = args.timestamp
 scoring = args.scoring
 run = args.run
 pca = str(args.pca)
+w_rfecv = int(args.rfecv)
+leave_out_bfi10 = int(args.leave_bfi10)
+leave_out_noisy = int(args.leave_noisy)
+
+if w_rfecv == 1:
+    w_rfecv = True
+else:
+    w_rfecv = False
+
+if leave_out_bfi10 == 1:
+    leave_out_bfi10 = True
+else:
+    leave_out_bfi10 = False
+
+if leave_out_noisy == 1:
+    leave_out_noisy = True
+else:   
+    leave_out_noisy = False
 
 if pca == '99':
     pca = PCA(0.99)
+    pca_str = '99'
 elif pca == '95':
     pca = PCA(0.95)
+    pca_str = '95'
 else:
     pca = 'passthrough'
+    pca_str = 'NaN'
 
 # Define index of labels and features after final database selection
 begin_col_labels = label_feature_indexes[db][0]
 begin_col_features = label_feature_indexes[db][1]
+median_labels_needed = label_feature_indexes[db][2]
+db_is_remde = label_feature_indexes[db][3]
+db_is_nsc = label_feature_indexes[db][4]
+f = label_feature_indexes[db][5]
+
+remde_str = 'NaN'
+if db_is_remde:
+    if leave_out_noisy:
+        remde_str = 'w/o'
+    else:
+        remde_str = 'w'
+
+nsc_str = 'NaN'
+if db_is_nsc:
+    if leave_out_bfi10:
+        nsc_str = 'w/o'
+    else:
+        nsc_str = 'w'
 
 # Import custom arguments config
 trait_dict = arguments_config.trait_dict
@@ -186,6 +247,7 @@ if not isExist:
         os.makedirs(f"{batch_path}/best_estimators")
     os.makedirs(f"{batch_path}/cv_results")
     os.makedirs(f"{batch_path}/outputs")
+    os.makedirs(f"{batch_path}/boots")
     if save_graphs:
         os.makedirs(f"{batch_path}/graphs")
 
@@ -207,12 +269,22 @@ register_parallel_backend('ipyparallel',
                           lambda: IPythonParallelBackend(view=bview))
 
 ps.print_save(f"\nSetup:")
-ps.print_save(f"b: {b}, db: {db}, sc: {sc}, ec: {ec}, f: {f}, m: {m}, t: {t}, scoring: {scoring}, cal: {cal_str}")
+ps.print_save(f"b: {b}, db: {db}, remde_noise: {remde_str}, nsc_bfi10: {nsc_str}, f: {f}, m: {m}, t: {t}, scoring: {scoring}, cal: {cal_str}")
 
 # --- LOAD DATA ---
 
 # load dataset
 full_df = pd.read_pickle(f"{FILE_DIR}/data/{db}")
+
+if db_is_remde:
+    if leave_out_noisy:
+        users = pd.read_csv('data/remde_noisy_users.csv')
+        noisy_users = users[users['Usable'] == 0]['Group']
+        full_df = full_df[full_df['Group'].isin(noisy_users) == False]
+
+if db_is_nsc:
+    if leave_out_bfi10:
+        full_df = full_df[full_df['Group'] != 'BFI-10']
 
 if gender == 'male':
     full_df = full_df[full_df['Gender'] == 1]
@@ -226,6 +298,10 @@ if sc != 0 and 'Length' in full_df.columns:
     full_df = full_df[(full_df['Length'] >= sc)]
 if ec != 0 and 'Length' in full_df.columns:
     full_df = full_df[(full_df['Length'] <= ec)]
+
+if median_labels_needed:
+    'Calculating median labels...'
+    full_df = calculate_median_labels(full_df, begin_col_labels, begin_col_features)
 
 # define X and y
 X = full_df.iloc[:, begin_col_features:]
@@ -333,14 +409,23 @@ for idx, (train_idx_gs, test_idx_gs) in enumerate(StratifiedGroupKFold(n_splits=
     cv_fold = PredefinedSplit(test_fold=test_fold)
 
     cache = mkdtemp()
-
-    # Create the pipeline
-    pipe = Pipeline([
-        ('scaler', StandardScaler()),
-        ('pca', pca),
-        ('feat_sel', RFECV(clf_rfecv, cv=list(cv_rfecv.split(X_train_gs, y_train_gs, groups_train_gs)), scoring=scoring, step=step_rfecv)),
-        ('clf', SVC(kernel='rbf'))
-    ],memory=cache)
+    
+    if w_rfecv:
+        # Create the pipeline
+        pipe = Pipeline([
+            ('scaler', StandardScaler()),
+            ('pca', pca),
+            ('feat_sel', RFECV(clf_rfecv, cv=list(cv_rfecv.split(X_train_gs, y_train_gs, groups_train_gs)), scoring=scoring, step=step_rfecv)),
+            ('clf', SVC(kernel='rbf'))
+        ],memory=cache)
+    else:
+         # Create the pipeline
+        pipe = Pipeline([
+            ('scaler', StandardScaler()),
+            ('pca', pca),
+            ('feat_sel', 'passthrough'),
+            ('clf', SVC(kernel='rbf'))
+        ],memory=cache)
 
     # Perform a Grid Search for the current fold
     gs = GridSearchCV(pipe, param_grid, scoring=scoring_metrics, n_jobs=len(c), cv=cv_fold, error_score='raise', verbose=1, refit=scoring)
@@ -375,13 +460,22 @@ cv_rank_test_score = cv_results_.loc[cv_results_.index[0],f'rank_test_score']
 # create a StratifiedGroupKFold object for the best estimator RFECV
 cv_rfecv_best = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=seed)
 
-# Create the best estimator pipeline
-best_estimator_ = Pipeline([
-    ('scaler', StandardScaler()),
-    ('pca', pca),
-    ('feat_sel', RFECV(clf_rfecv, cv=list(cv_rfecv_best.split(X_train_gs, y_train_gs, groups_train_gs)), scoring=scoring)),
-    ('clf', 'passthrough')
-])
+if w_rfecv:
+    # Create the best estimator pipeline
+    best_estimator_ = Pipeline([
+        ('scaler', StandardScaler()),
+        ('pca', pca),
+        ('feat_sel', RFECV(clf_rfecv, cv=list(cv_rfecv_best.split(X_train_gs, y_train_gs, groups_train_gs)), scoring=scoring)),
+        ('clf', 'passthrough')
+    ])
+else:
+    # Create the best estimator pipeline
+    best_estimator_ = Pipeline([
+        ('scaler', StandardScaler()),
+        ('pca', pca),
+        ('feat_sel', 'passthrough'),
+        ('clf', 'passthrough')
+    ])
 
 # Set the best parameters
 best_estimator_.set_params(**best_params_)
@@ -452,6 +546,7 @@ f1_ci = np.percentile(boot_f1_scores, [(1 - alpha) / 2 * 100, (1 + alpha) / 2 * 
 precision_ci = np.percentile(boot_precisions, [(1 - alpha) / 2 * 100, (1 + alpha) / 2 * 100])
 recall_ci = np.percentile(boot_recalls, [(1 - alpha) / 2 * 100, (1 + alpha) / 2 * 100])
 
+
 # Predict probabilities for the original test set
 y_probs = final_estimator_.predict_proba(X_test)[:, 1]
 y_preds = final_estimator_.predict(X_test)
@@ -475,42 +570,61 @@ ps.print_save(f"Best mean score: {round(cv_mean_test_main, 3)}")
 ps.print_save(f"Best std score: {round(cv_std_test_main, 3)}")
 ps.print_save(f"Rank of mean score: {cv_rank_test_score}")
 
-# Print bootstrapped results
-ps.print_save("\nEvaluation bootstrap results (mean, SD, lower CI, higher CI):")
-
-ps.print_save(f"AUC-ROC score: ({auc_roc_mean:.3f}, {auc_roc_std:.3f}, {auc_roc_ci[0]:.3f}, {auc_roc_ci[1]:.3f})")
-ps.print_save(f"Balanced accuracy: ({bal_acc_mean:.3f}, {bal_acc_std:.3f}, {bal_acc_ci[0]:.3f}, {bal_acc_ci[1]:.3f})")
-ps.print_save(f"F1 score: ({f1_mean:.3f}, {f1_std:.3f}, {f1_ci[0]:.3f}, {f1_ci[1]:.3f})")
-ps.print_save(f"Precision: ({precision_mean:.3f}, {precision_std:.3f}, {precision_ci[0]:.3f}, {precision_ci[1]:.3f})")
-ps.print_save(f"Recall: ({recall_mean:.3f}, {recall_std:.3f}, {recall_ci[0]:.3f}, {recall_ci[1]:.3f})")
-
 db_name = db.split("-")[0]
 # create the string to add to the main results file
-main_results_string = [timestamp, b, run, db_name, sc, ec, f, m, t]
+main_results_string = [timestamp, b, run, db_name, remde_str, nsc_str, f, m, t]
 
-for i, x in enumerate(best_estimator_):
-    if i == 1:
-        if str(x) != 'passthrough':
-            x = f"{str(x).split('=')[1][:-1]}, {x.n_components_}"
-    if i == 2:
-        x = x.n_features_
-    main_results_string.append(str(x).replace('\n', ''))
+if best_estimator_[1] != 'passthrough':
+    main_results_string.append(f"{pca_str}, {best_estimator_[1].n_features_}")
+else:
+    main_results_string.append('NaN')
+
+if best_estimator_[2] != 'passthrough':
+    main_results_string.append(best_estimator_[2].n_features_)
+else:
+    main_results_string.append('NaN')
+main_results_string.append(str(best_estimator_[-1]).replace('\n', ''))
 
 main_results_string.extend([
-    cal_str, scoring,
-    round(cv_combined_test_score, 3), cv_rank_test_score, round(cv_mean_test_main, 3), round(cv_std_test_main, 3), round(cv_mean_test_second, 3), round(cv_std_test_second, 3),
-    round(auc_roc, 3), round(auc_roc_mean, 3), round(auc_roc_std, 3),
-    round(auc_roc_ci[0], 3), round(auc_roc_ci[1], 3),
-    round(bal_acc, 3), round(bal_acc_mean, 3), round(bal_acc_std, 3),
-    round(bal_acc_ci[0], 3), round(bal_acc_ci[1], 3),
-    round(f1, 3), round(f1_mean, 3), round(f1_std, 3),
-    round(f1_ci[0], 3), round(f1_ci[1], 3),
-    round(precision, 3), round(precision_mean, 3), round(precision_std, 3),
-    round(precision_ci[0], 3), round(precision_ci[1], 3),
-    round(recall, 3), round(recall_mean, 3), round(recall_std, 3),
-    round(recall_ci[0], 3), round(recall_ci[1], 3),
+    scoring,
+    round(cv_combined_test_score, 3), cv_rank_test_score, round(cv_mean_test_main, 3), round(cv_std_test_main, 3),
 ])
 
+# Order of metrics: original value, mean, std, p-value, ci[0], ci[1]
+t_stat_bal_acc, p_value_bal_acc = ttest_1samp(boot_bal_accs, 0.5)
+main_results_string.extend([
+    round(bal_acc, 3), round(bal_acc_mean, 3), round(bal_acc_std, 3), round(p_value_bal_acc,3), round(bal_acc_ci[0], 3), round(bal_acc_ci[1], 3),
+])
+
+t_stat_auc_roc, p_value_auc_roc = ttest_1samp(boot_auc_rocs, 0.5)
+main_results_string.extend([
+    round(auc_roc, 3), round(auc_roc_mean, 3), round(auc_roc_std, 3), round(p_value_auc_roc, 3), round(auc_roc_ci[0], 3), round(auc_roc_ci[1], 3),
+])
+
+t_stat_f1, p_value_f1 = ttest_1samp(boot_f1_scores, 0.5)
+main_results_string.extend([
+    round(f1, 3), round(f1_mean, 3), round(f1_std, 3), round(p_value_f1,3), round(f1_ci[0], 3), round(f1_ci[1], 3),
+])
+
+t_stat_precision, p_value_precision = ttest_1samp(boot_precisions, 0.5)
+main_results_string.extend([
+    round(precision, 3), round(precision_mean, 3), round(precision_std, 3), round(p_value_precision, 3), round(precision_ci[0], 3), round(precision_ci[1], 3),
+])
+
+t_stat_recall, p_value_recall = ttest_1samp(boot_recalls, 0.5)
+main_results_string.extend([
+    round(recall, 3), round(recall_mean, 3), round(recall_std, 3), round(p_value_recall,3), round(recall_ci[0], 3), round(recall_ci[1], 3),
+])
+
+
+# Print bootstrapped results
+ps.print_save("\nEvaluation bootstrap results (mean, SD, p-value, lower CI, higher CI):")
+
+ps.print_save(f"Balanced accuracy: ({bal_acc_mean:.3f}, {bal_acc_std:.3f}, {p_value_bal_acc},{bal_acc_ci[0]:.3f}, {bal_acc_ci[1]:.3f})")
+ps.print_save(f"AUC-ROC score: ({auc_roc_mean:.3f}, {auc_roc_std:.3f}, {p_value_auc_roc}, {auc_roc_ci[0]:.3f}, {auc_roc_ci[1]:.3f})")
+# ps.print_save(f"F1 score: ({f1_mean:.3f}, {f1_std:.3f}, {p_v},{f1_ci[0]:.3f}, {f1_ci[1]:.3f})")
+# ps.print_save(f"Precision: ({precision_mean:.3f}, {precision_std:.3f}, {precision_ci[0]:.3f}, {precision_ci[1]:.3f})")
+# ps.print_save(f"Recall: ({recall_mean:.3f}, {recall_std:.3f}, {recall_ci[0]:.3f}, {recall_ci[1]:.3f})")
 
 # --- SAVE RESULTS ---
 
@@ -519,6 +633,8 @@ cv_results_.to_csv(f'{batch_path}/cv_results/{file_prefix}-best_result.csv')
 
 if save_model:
     joblib.dump(best_estimator_, f"{batch_path}/best_estimators/{file_prefix}-best_estimator.joblib")
+
+joblib.dump(boot_bal_accs, f"{batch_path}/boots/{file_prefix}-boots.joblib")
 
 
 # write string to the main results file
