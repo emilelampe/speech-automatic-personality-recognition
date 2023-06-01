@@ -60,9 +60,6 @@ n_metadata_cols = 1
 # Gender column must be called 'Gender', 'male' = 1, 'female' = 0
 gender = 'both'
 
-# Feature set ('egemaps', 'compare')
-f = 'embeddings'
-
 # Model to use ('svm_rbf', 'knn', 'rf', 'svm_l')
 # m = 'svm_rbf'
 m = 'svm_rbf'
@@ -84,10 +81,10 @@ scoring_metrics = {
 }
 
 # if you want to save graphs
-save_graphs = False
+save_graphs = True
 
 # if you want to save the trained model
-save_model = False
+save_model = True
 
 # whether to calibrate the model
 calibration = False
